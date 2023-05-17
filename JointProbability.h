@@ -1,6 +1,6 @@
-/*  
+/* 
  * PDF Estimator:  A non-parametric probability density estimation tool based on maximum entropy
- * File:   ChebyShev.h
+ * File:   JointProbability.cpp
  * Copyright (C) 2018
  * Jenny Farmer jfarmer6@uncc.edu
  * Donald Jacobs djacobs1@uncc.edu
@@ -12,33 +12,41 @@
  * this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-#ifndef CHEBYSHEV_HPP
-#define	CHEBYSHEV_HPP
+
+#ifndef JOINTPROBABILITY_H
+#define JOINTPROBABILITY_H
 
 #include <vector>
+#include "Variable.h"
+#include "OutputControl.h"
+#include <math.h>
 
-using namespace std;
-class ChebyShev {
+class JointProbability {
 public:
-    ChebyShev();
-    ChebyShev(const ChebyShev& orig);
-    virtual ~ChebyShev();
-    void initialize(double dzLocal[], int sizeLocal);
-    void initializeDx(double dzLocal[], int sizeLocal);   
-
-    vector < vector < double > >  getAllTerms(unsigned mode);
-    vector < vector < double > >  getAllTermsDx(unsigned mode);
+    JointProbability(vector <Variable> variables, int nSamples, int pdfSize);
+    virtual ~JointProbability();    
+        
+    OutputControl out;
+    void calculate();
+//    vector <vector <double > > getRange();
+    vector <double> getRange();
+    vector <double> getJP();
+private:
+    vector <Variable> variables;
+    double * jointPDF;
+    int nSamples;
+    int gridSize;
+    int pdfSize;
+    int nVariables;
+    int matrixSize;
+    vector < vector < int > > grids;        
     
-private:         
-    int size;    
-    double * dz;
-    vector < vector<double> > termsT;
-    vector < vector<double> > termsQ;
-    
-    vector <double> addMode(int mode);
-    vector <double> addModeDx(int mode);
+    vector <double> gridPointsCourse;
+    vector <double> gridPointsFine;
+        
+    vector <int> rowsIntersect(vector <int> v1, vector <int> v2);
     
 };
 
-#endif	/* CHEBYSHEV_HPP */
+#endif /* JOINTPROBABILITY_H */
 

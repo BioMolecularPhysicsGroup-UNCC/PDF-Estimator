@@ -1,6 +1,6 @@
 /* 
  * PDF Estimator:  A non-parametric probability density estimation tool based on maximum entropy
- * File:   MinimizeScore.hpp
+ * File:   MinimizeScore.h
  * Copyright (C) 2018
  * Jenny Farmer jfarmer6@uncc.edu
  * Donald Jacobs djacobs1@uncc.edu
@@ -19,11 +19,10 @@
 #include <math.h>
 #include <algorithm>
 #include <string.h>
-//#include <time.h> is this needed?
 
 #include "ChebyShev.h"
 #include "InputData.h"
-#include "Score.h"
+#include "ScoreQZ.h"
 #include "OutputControl.h"
 #include <limits>
 #include <climits>
@@ -39,20 +38,22 @@ using namespace std;
 class MinimizeScore {
 public:
     MinimizeScore();
-    MinimizeScore(const MinimizeScore& orig);
     virtual ~MinimizeScore();
-    bool minimize(InputParameters *input, const InputData& data, Score& score);
-    vector <double> getLagrange();
+    bool minimize(const InputParameters& input, const InputData& data);
+    vector <double> getLagrange();    
     
     OutputControl out;
     
+    double bestThreshold;
+    double * bestRandom;
+    
     int    mode;
     float duration;
-    double bestScore;
-    double bestThreshold;
     double  normalize;
-    double * trialRandom;
     int     N;    
+    int     initPartitionSize;
+    int     partitionSize;
+    int     targetPartition;
 private:
     int     nPoints;
     int maxLagrange;
@@ -62,13 +63,20 @@ private:
     ChebyShev cheby;
     double * inverse;
     double * z;
-    double * dz;    
-    double * doubleInverse;
-    double * xUntransform;
-    double * bestRandom;
+    double * dzWeight1;
+    double * dzWeight2;
+    double * dzWeight3; 
+    double * trialRandom;
+    double bestScore;
     double * bestLagrange;
     double * rawDataPartition;
     vector < vector < double > > T;
+    vector < vector < double > > Tdx;
+    vector <int> smoothWindow;
+    vector <double> smoothSize;
+    double smoothError;
+    bool smooth;
+   
     
     void funnelDiffusion(double * original, double * updated, int arraySize, double currentSigmaMu);
     void funnelDiffusion(double * original, double * updated, int arraySize, double currentSigmaMu, int startIndex);
@@ -76,7 +84,8 @@ private:
     double random(double m, double s);
     double ranX();
     void map(double r[], double cdf[], double rawDataPartition[], int partitionSize);
-    void calculatePDF (double cdf[], double lagrange[], int modes);//, double ** Tarray);
+    void calculatePDF (double cdf[], double lagrange[], int modes);
+    void calculatePDFAdaptive (double cdf[], double lagrange[], int modes);
     void calculatePDF (double cdf[], double power);
 };
 

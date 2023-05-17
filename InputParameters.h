@@ -1,6 +1,6 @@
 /* 
  * PDF Estimator:  A non-parametric probability density estimation tool based on maximum entropy
- * File:   InputParameters.hpp
+ * File:   InputParameters.h
  * Copyright (C) 2018
  * Jenny Farmer jfarmer6@uncc.edu
  * Donald Jacobs djacobs1@uncc.edu
@@ -20,6 +20,8 @@
 #include <iostream>
 #include <stdlib.h>
 #include <math.h>
+#include <algorithm>
+#include <vector>
 #include "OutputControl.h"
 using namespace std;
 
@@ -57,15 +59,11 @@ public:
     int     initPartitionSize;
     int     startSolutionNumber;
     int     integrationPoints;
-    int     numberSolutions;
-    int     numberTrials;
     int     maxLagrange;
     int     minLagrange;
     int     nLagrangeAdd;
-    double  outlierCutoff;    
-
-    bool    fuzz;
-    double  fuzzFactor;                                                     //not used yet
+    double  outlierCutoff;
+    bool    smooth;
     
     double  fractionLagrangeAdd;
     double  initSigma;
@@ -73,12 +71,12 @@ public:
     double  decayFactor;
     int     loopMax;
     
-    
-    float   symmetryPoint;
-    bool    symmetry;
-    
+    void setEstimationPoints(vector <double> x);    
+    vector <double> estimatedPoints;
+    bool estimatePoints;
+        
     InputParameters();
-    InputParameters(const InputParameters& orig);
+//    InputParameters(const InputParameters& orig);
     virtual ~InputParameters();
     bool userInput(int argc, char** argv);    
     

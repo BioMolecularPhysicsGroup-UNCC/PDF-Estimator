@@ -19,7 +19,7 @@ InputParameters::InputParameters() {
     debug = false;
    
     inputPath = "";
-    inputFile = "specifyFilename.txt";
+    inputFile = ".txt";
     outputPath = "";
     writeFile = true;
     writeHeader = true;
@@ -28,46 +28,46 @@ InputParameters::InputParameters() {
     writeFailed = true;
     qqFile = "";
     sqrFile = "";
-    adaptive = false;
+    adaptive = true;
     
     lowerBoundSpecified = false;
     upperBoundSpecified = false;
     
     scoreType = "QZ";
     SURDMinimum = 5;
-    SURDTarget  = 40;
+    SURDTarget  = 70;
     SURDMaximum = 100;
     initPartitionSize = 1025;
     startSolutionNumber = 0;
     integrationPoints = -1;
-    numberSolutions = 1;
-    numberTrials = 1;
     maxLagrange = 200;//2 for power
     minLagrange = 1;
     nLagrangeAdd = 5;
-    outlierCutoff = 7.0;    
-
-    fuzz = false;
-    fuzzFactor = 1;                                                     //not used yet
+    outlierCutoff = 7.0;
+    smooth = true;
     
     fractionLagrangeAdd = 0.1;
     initSigma = 0.1;
-    finalSigma = 0.001;
+    finalSigma =0.001;
     decayFactor = sqrt(2.0);
-    loopMax = 30;
+    loopMax = 100;                  // updated from 30; September 2020
     
-    symmetryPoint = 0;
-    symmetry = false;   
+    estimatePoints = false;
     
-    
-}
+ }
 
-InputParameters::InputParameters(const InputParameters& orig) {
-}
+//InputParameters::InputParameters(const InputParameters& orig) {
+//}
 
 InputParameters::~InputParameters() {
 }
 
+
+void InputParameters::setEstimationPoints(vector<double> x) {
+    estimatedPoints.resize(x.size());
+    estimatedPoints =  x;
+    estimatePoints = true;
+}
 
 bool InputParameters::userInput(int argc, char**  argv){
     
@@ -81,56 +81,56 @@ bool InputParameters::userInput(int argc, char**  argv){
             if (debugOpt == "on") {
                 debug = true;
                 out.debug = true;
-                out.print("debug:  on");
+                out.print("debug = on");
             }
             break;
         case 'f':
             inputFile = optarg;
-            out.print("Input data file name:  " + inputFile);
+            out.print("Input data file name = " + inputFile);
             inputEntered = true;
             break; 
         case 'o':
             outputFile = optarg;
-            out.print("Output data file name:  " + outputFile);
+            out.print("Output data file name = " + outputFile);
             break; 
         case 'a':
             inputPath = optarg;
-            out.print("Input data path:  " + inputPath);
+            out.print("Input data path = " + inputPath);
             break; 
         case 'b':
             outputPath = optarg;
-            out.print("Output data path:  " + outputPath);
+            out.print("Output data path = " + outputPath);
             break; 
         case 'w':
             writeOpt = optarg;
             if (writeOpt == "off") {
                 writeFile = false;
-                out.print("Write File:  off");
+                out.print("Write File = off");
             }
             break;
         case 'x':
             writeOpt = optarg;
             if (writeOpt == "off") {
                 writeFailed = false;
-                out.print("Write Failed Solutions:  off");
+                out.print("Write Failed Solutions = off");
             }
             break;        
         case 'h':
             headerOpt = optarg;
             if (headerOpt == "off") {
                 writeHeader = false;
-                out.print("Write File Header:  off");
+                out.print("Write File Header = off");
             }
             break;
         case 'q':
             qqFile = optarg;
             writeQQ = true;
-            out.print("Write QQ File:  " + qqFile);
+            out.print("Write QQ File = " + qqFile);
             break;
         case 'r':
             sqrFile = optarg;
             writeSQR = true;
-            out.print("Write SQR File:  " + sqrFile);
+            out.print("Write SQR File = " + sqrFile);
             break;
         case 'l': 
             lowerBound = atof(optarg);
@@ -144,7 +144,7 @@ bool InputParameters::userInput(int argc, char**  argv){
             break;  
         case 'v':
             scoreType = optarg;
-            out.print("Scoring method:  " + scoreType);
+            out.print("Scoring method = " + scoreType);
             break;       
         case 's':                                                               
             SURDTarget = atof(optarg);
@@ -184,29 +184,16 @@ bool InputParameters::userInput(int argc, char**  argv){
             break;
         case 'p':                                                               
             integrationPoints = atoi(optarg);
-            out.print("integration points = " + integrationPoints);
+            out.print("integration points = ", integrationPoints);
             break;
         case 'n':                                                               
             maxLagrange = atoi(optarg);
             out.print("maximum Lagrange = ", maxLagrange);
-            break;
-        case 'c':                                                               
-            numberSolutions = atoi(optarg);
-            out.print("number of solutions = ", numberSolutions);
-            break;
-        case 't':                                                               
-            numberTrials = atoi(optarg);
-            out.print("number of trials = ", numberTrials);
-            break;
+            break;       
         case 'm':                                                               
             minLagrange = atoi(optarg);
             out.print("minimum Lagrange = ", minLagrange);
-            break;        
-        case 'z': 
-            fuzzFactor = atof(optarg);
-            out.print("fuzz factor = ", fuzzFactor);
-            fuzz = true;
-            break; 
+            break;                
         default:
             out.print("Invalid parameter flag: ", c);
             printUsage();            
@@ -217,9 +204,7 @@ bool InputParameters::userInput(int argc, char**  argv){
         printUsage();
         return false;
     }
-    if (numberTrials < numberSolutions) {
-        out.print("Number of requested solutions exceeds number of trials");
-    }
+   
     if (SURDMaximum < SURDMinimum) {
         out.print("maximum coverage cannot be less than minimum coverage values");
         return false;
@@ -256,6 +241,6 @@ void InputParameters::printUsage() {
     out.print( " -n    maximum number of Lagrange multipliers");
     out.print( " -m    minimum number of Lagrange multipliers");
     out.print( " -y    penalty flag [on/off]");
-    out.print( " -d    debug [on/off]");
+    out.print( " -g    debug [on/off]");
 }
 

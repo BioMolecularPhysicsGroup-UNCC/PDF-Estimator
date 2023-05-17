@@ -1,6 +1,6 @@
 /* 
  * PDF Estimator:  A non-parametric probability density estimation tool based on maximum entropy
- * File:   inputData.hpp
+ * File:   inputData.h
  * Copyright (C) 2018
  * Jenny Farmer jfarmer6@uncc.edu
  * Donald Jacobs djacobs1@uncc.edu
@@ -32,9 +32,11 @@ public:
     virtual ~InputData();
     double * inverse;
     double * doubleInverse;
-    double * xUntransform;
     double * transformedZeroOne;
     double * dz;
+    double * dzWeight1;
+    double * dzWeight2;
+    double * dzWeight3;
     int N;
     int nPoints;
     double minimumRaw;
@@ -46,10 +48,15 @@ public:
     int nPointsAdjust;
     ChebyShev cheby;
     
+    vector <int> smoothWindow;
+    vector <double> smoothSize;
+        
+    InputData() {};
     InputData(const InputParameters& input);
-    InputData(const InputData& orig);
+//    InputData(const InputData& orig);
     bool readData();
-    void setData(vector <double> data);
+    void setData(vector <double> & data);
+    vector<int> realIdx;
     bool processData();
     OutputControl out;   
 private: 
@@ -57,12 +64,13 @@ private:
     
     bool leftOutliers;
     bool rightOutliers;
-    
+           
     vector <double> rawData;
     vector <double> transformedData;
     vector <double> tempData;
     bool transformData();
     void setAdaptiveDz();
+//    void setUniformDz();
     void identifyOutliers(); 
 };
 

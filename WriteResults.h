@@ -1,6 +1,6 @@
 /* 
  * PDF Estimator:  A non-parametric probability density estimation tool based on maximum entropy
- * File:   WriteResults.hpp
+ * File:   WriteResults.h
  * Copyright (C) 2018
  * Jenny Farmer jfarmer6@uncc.edu
  * Donald Jacobs djacobs1@uncc.edu
@@ -32,27 +32,51 @@ using namespace std;
 class WriteResults {
 public:    
     WriteResults();
-    WriteResults(const WriteResults& orig);
+//    WriteResults(const WriteResults& orig);
     virtual ~WriteResults();
    
-    void writeSolution(InputParameters *input, InputData *data, MinimizeScore *solution, int solutionNumber, int trial, Score *score, bool failed);
-    void createSolution(InputParameters *input, InputData *data, MinimizeScore *solution, Score *score);
+    void writeSolution(const InputParameters& input, const InputData& data, MinimizeScore& solution, 
+                       Score score, bool failed, string fileNameAdd);
+    void writeSolution(const InputParameters& input, const InputData& data, MinimizeScore& solution, 
+                       string fileNameAdd);
+    void createSolution(const InputParameters& input, const InputData& data, MinimizeScore& solution);
+    
+    double estimatePoint(double point);
+    void estimatePoints(vector <double> estimatedPoints);
+    vector <double> interpolateGrid(vector <double> x, vector <double> y, vector <double> gridPoints);
     
     void writeColumn(string filename, double r[], int length);
     void writeColumn(string filename, int r[], int length);
     void writeColumn(string filename, vector <double> r, int length);
     void writeColumn(string filename, vector <int> r, int length);
+    void writeColumns(string filename, vector <double> r1, vector <double> r2, int length);
+    
+    void writeValuesAppend(string filename, double x1, double x2);
     
     void writeQQ(string filename, double r[], int length, bool sqr);
     void createQQ(double r[], int length);
     
+    double pdfPoint;
+    double cdfPoint;
+    
     vector <double> x;
     vector <double> PDF;   
     vector <double> CDF;   
+    vector <double> xPoints;
+    vector <double> PDFPoints;  
+    vector <double> CDFPoints;  
     vector <double> SQR;
     vector <double> L;
+    vector <double> R;
     
-    OutputControl out;
+    OutputControl out;    
+
+//private:
+    double normConstant;
+    double max;
+    double min;  
+    
+    
 
 };
 

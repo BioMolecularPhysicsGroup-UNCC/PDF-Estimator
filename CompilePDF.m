@@ -1,1 +1,0 @@
-mex -O  'EstimatePDF.cpp' 'OutputControl.cpp' 'callPDFMatlab.cpp' 'WriteResults.cpp' 'Score.cpp' 'ScoreLL.cpp' 'ScoreQZ.cpp' 'ScoreAD.cpp' 'MinimizeScore.cpp' 'InputParameters.cpp' 'InputData.cpp' 'ChebyShev.cpp'

@@ -1,6 +1,5 @@
 #include <omp.h>
 #include <iostream>
-#include <execution>
 
 /* 
  * File:   stitchPDF.cpp
@@ -123,10 +122,13 @@ void stitchPDF::estimate() {
     blocks.resize(nPartitions - 2);
     int nPoints = 10;//(int) (200 + Ns / 200.0);     
 
-    std::cout << "begin parallel region " << omp_get_num_threads() << std::endl; 
     
-    #pragma omp parallel for
-    for (int p = 0; p < nPartitions - 2; p++) {         
+    //#pragma omp parallel for
+    for (int p = 0; p < nPartitions - 2; p++) {     
+
+        if (p == 0) {
+            std::cout << "begin parallel region " << omp_get_num_threads() << std::endl;  
+        }   
         
         vector <double> range(sample.begin() + partitions[p], sample.begin() + partitions[p + 2] + 1); 
 
@@ -142,7 +144,7 @@ void stitchPDF::estimate() {
         blocks[p] = block;
         //blocks.push_back(block);
     }    
-    sort(std::execution::par_unseq, x.begin(), x.end());
+    sort(x.begin(), x.end());
 }
 
 

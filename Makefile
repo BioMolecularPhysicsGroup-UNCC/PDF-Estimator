@@ -1,13 +1,13 @@
 SOURCES=Block.cpp ChebyShev.cpp EstimatePDFMain.cpp InputData.cpp InputParameters.cpp JointProbability.cpp MinimizeScore.cpp OutputControl.cpp Score.cpp ScoreQZ.cpp StitchPDF.cpp Variable.cpp WriteResults.cpp
 OBJ := $(SOURCES:%.cpp=%.o)
-CFLAGS=-fopenmp -ltbb -g 
-LDFLAGS=-fopenmp -g
+CFLAGS=-fopenmp -g -DPDF_BINARY_1D_READ=1 -Wall
+LDFLAGS=-fopenmp 
 
 %.o: %.cpp
-	g++ -c $(CFLAGS) $< -o $@ 
+	mpic++ -c $(CFLAGS) $< -o $@ 
 
 all: $(OBJ)
-	g++ $(LDFLAGS) $(OBJ) -o estimate -ltbb
+	mpic++ $(LDFLAGS) $(OBJ) -o estimate 
 
 clean:
 	rm $(OBJ)

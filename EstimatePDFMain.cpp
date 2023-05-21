@@ -157,94 +157,119 @@ int main(int argc, char** argv) {
     MPI_Status read_status;
     vector<double> samples;
     int* receive_sizes = new int[size];
-    bool* remaining_chunks = new bool[size];
 
-    if (rank == 0) {
-        MPI_File_open(MPI_COMM_WORLD, (input.inputPath + input.inputFile).c_str(), MPI_MODE_RDONLY, MPI_INFO_NULL, &sample_file);
+    MPI_File_open(MPI_COMM_WORLD, (input.inputPath + input.inputFile).c_str(), MPI_MODE_RDONLY, MPI_INFO_NULL, &sample_file);
+    MPI_File_get_size(sample_file, &file_size);
 
-        MPI_File_get_size(sample_file, &file_size);
+    char* file_data;
 
-        char* file_data = (char*)malloc(sizeof(char) * file_size);
+    if (file_size > MAX_SERIAL_FILE_SIZE) {
 
-        if (file_size > MAX_SERIAL_FILE_SIZE) {
+        file_data = (char*)malloc(sizeof(char) * ((file_size/size) + 100));
 
-            MPI_File_read_at_all(sample_file, (file_size/size)*rank, file_data, (file_size/size) + 100, MPI_CHAR, &read_status);
+        MPI_File_read_at_all(sample_file, (file_size/size)*rank, file_data, (file_size/size) + 100, MPI_CHAR, &read_status);
 
-            string file_string(file_data, (file_size/size) + 100);
-            istringstream file_stream(file_string);
+        string file_string(file_data, (file_size/size) + 100);
+        istringstream file_stream(file_string);
 
-            string line;
-            while (file_stream.tellg() < (file_size/size) + 1) {
-                getline(file_stream, line);
-                double sample = stod(line);
-                samples.push_back(sample);
-            }
+        string line;
 
-            free(file_data);
+        // discard potentially truncated entry
+        if (rank != 0) {
+            getline(file_stream, line);
+        }
 
-            int sample_size = samples.size();
-            MPI_Offset total_sample_size = 0;
+        while (file_stream.tellg() < (file_size/size) + 1 && file_stream.tellg() != -1) {
+            getline(file_stream, line);
+            double sample = stod(line);
+            samples.push_back(sample);
+        }
 
-            MPI_Allgather(&sample_size, 1, MPI_INT, receive_sizes, 1, MPI_INT, MPI_COMM_WORLD);
+        free(file_data);
 
-            for (int i = 0; i < size; i++) {
-                total_sample_size += receive_sizes[i];
-            }
+        std::cout << "uhm, hello?" << std::endl;
 
-            sort(samples.begin(), samples.end());
-        
-            double* merge_list = (double*)malloc(sizeof(double) * std::min((int)MAX_CHUNK_SAMPLE_SIZE, (int)total_sample_size));
+        int sample_size = samples.size();
+        MPI_Offset total_sample_size = 0;
 
-            int* displacements = new int[size];
-            displacements[0] = 0;
+        MPI_Allgather(&sample_size, 1, MPI_INT, receive_sizes, 1, MPI_INT, MPI_COMM_WORLD);
 
-            bool chunk_mode = false;
+        for (int i = 0; i < size; i++) {
+            total_sample_size += receive_sizes[i];
+        }
 
-            for (int i = 1; i < size; i++) {
-                displacements[i] = displacements[i-1] + receive_sizes[i-1];
+        sort(samples.begin(), samples.end());
+        vector<double> new_samples;
 
-                if (receive_sizes[i-1] == (MAX_CHUNK_SAMPLE_SIZE/size)) {
-                    remaining_chunks[i-1] = true; 
+        int division = 1;
+        int* rank_sizes = new int[size];
+
+        std::copy(receive_sizes, receive_sizes + size, rank_sizes);
+
+        bool sent = false;
+        bool oversized = false;
+
+        //std::cout << "receive time!" << std::endl;
+    
+        while ((division *= 2, division) < size*2) {
+            for (int i = 0; i < size - division; i += division) {
+                long int sum = (long int)rank_sizes[i] + (long int)rank_sizes[i + division/2];
+
+                if (sum > MAX_CHUNK_SAMPLE_SIZE) {
+                    oversized = true;
+                    for (int j = 0; j < i; j += division) {
+                        rank_sizes[j] -= rank_sizes[j + division/2];
+                    }
+                    break;
                 } else {
-                    remaining_chunks[i-1] = false;
+                    rank_sizes[i] = (int)sum;
                 }
             }
 
-            int* indices = new int[size];
-            std::copy(displacements, displacements + size, indices);
+            if (oversized) {
+                break;
+            } else if (sent) {
+                continue;
+            }
 
-            MPI_Gatherv(&samples[0], sample_size, MPI_DOUBLE, merge_list, receive_sizes, displacements, MPI_DOUBLE, 0, MPI_COMM_WORLD);
+            if (rank % division == 0) { // We are receiving
 
-            samples.clear();
-            //samples.shrink_to_fit();
+                if (rank + (division/2) >= size) {
+                    continue;
+                }
 
-            for (MPI_Offset i = 0; i < total_sample_size; i++) {
-                double minimum = std::numeric_limits<double>::max();
-                int index = 0;
+                int receive_size = rank_sizes[rank + (division/2)];
 
-                for (int k = 0; k < size; k++) {
-                    if ((
-                        (k < size - 1 && indices[k] < displacements[k+1])
-                        || (k == size - 1 && indices[k] < total_sample_size)
-                    )) {
-                        if (merge_list[indices[k]] < minimum) {
-                            minimum = merge_list[indices[k]];
-                            index = k;
-                        }
+                samples.resize(sample_size + receive_size);
+                MPI_Recv(&samples[sample_size], receive_size, MPI_DOUBLE, rank + (division/2), 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+
+                vector<double> new_samples;
+
+                int left_index = 0;
+                int right_index = sample_size;
+
+                for (int i = 0; i < sample_size + receive_size; i++) {
+                    if ((samples[left_index] < samples[right_index] && left_index < sample_size) || right_index == sample_size + receive_size) {
+                        new_samples.push_back(samples[left_index]);
+                        left_index++;
                     } else {
-                        // if we are in chunking mode, do something!
+                        new_samples.push_back(samples[right_index]);
+                        right_index++;
                     }
                 }
 
-                samples.push_back(minimum);
-                indices[index]++;
+                // this should fully dealloc the old samples vector
+                samples = new_samples;
+                sample_size += receive_size;
+
+            } else { // We are sending
+                sent = true;
+                MPI_Send(&samples[0], sample_size, MPI_DOUBLE, rank - (division/2), 0, MPI_COMM_WORLD);
             }
+        }
 
-            std::cout << samples.size() << " compared with " << total_sample_size << std::endl;
-
-            //ofstream fileout("temp.bin", ios::out | ios::binary);
-            //fileout.write((char*)&samples[0], samples.size() * sizeof(double));
-            //fileout.close();
+        if (rank == 0) {
+            std::cout << "i wonder if we actually sorted" << std::endl;
 
             ofstream fileout("temp.txt", ios::out);
 
@@ -254,8 +279,21 @@ int main(int argc, char** argv) {
 
             fileout.close();
 
+            std::cout << "done sorting" << std::endl;
+        }
 
-        } else {
+        std::cout << samples.size() << " compared with " << total_sample_size << std::endl;
+
+        //ofstream fileout("temp.bin", ios::out | ios::binary);
+        //fileout.write((char*)&samples[0], samples.size() * sizeof(double));
+        //fileout.close();
+
+        
+
+
+    } else {
+        if (rank == 0) {
+            file_data = (char*)malloc(sizeof(char) * file_size);
 
             MPI_File_read(sample_file, file_data, file_size, MPI_CHAR, MPI_STATUS_IGNORE);
 
@@ -263,6 +301,7 @@ int main(int argc, char** argv) {
             istringstream file_stream(file_string);
 
             string line;
+
             while (getline(file_stream, line)) {
                 double sample = stod(line);
                 samples.push_back(sample);
@@ -287,55 +326,10 @@ int main(int argc, char** argv) {
             fileout.close();
 
             std::cout << samples.size() << " in serial" << std::endl;
-
         }
-
-        MPI_File_close(&sample_file);
-
-    } else {
-        MPI_File_open(MPI_COMM_WORLD, (input.inputPath + input.inputFile).c_str(), MPI_MODE_RDONLY, MPI_INFO_NULL, &sample_file);
-
-        MPI_File_get_size(sample_file, &file_size);
-
-        if (file_size > MAX_SERIAL_FILE_SIZE) {
-            char* file_data = (char*)malloc(sizeof(char) * ((file_size/size) + 100));
-
-            MPI_File_read_at_all(sample_file, (file_size/size)*rank, file_data, (file_size/size) + 100, MPI_CHAR, &read_status);
-
-            string file_string(file_data, (file_size/size) + 100);
-            istringstream file_stream(file_string);
-            string line;
-
-            getline(file_stream, line); // discard erroneous entry
-
-            while (file_stream.tellg() < (file_size/size) + 1 && file_stream.tellg() != -1) {
-                getline(file_stream, line);
-                double sample = stod(line);
-                samples.push_back(sample);
-            }
-
-            free(file_data);
-            file_stream.clear();
-            file_string.clear();
-
-            sort(samples.begin(), samples.end());
-
-            MPI_Offset sample_size = samples.size();
-            MPI_Offset total_sample_size = 0;
-            int sample_size_to_send = std::min((int)(MAX_CHUNK_SAMPLE_SIZE/size), (int)sample_size);
-
-            MPI_Allgather(&sample_size_to_send, 1, MPI_INT, receive_sizes, 1, MPI_INT, MPI_COMM_WORLD);
-            MPI_Gatherv(&samples[0], sample_size_to_send, MPI_DOUBLE, NULL, NULL, NULL, MPI_DOUBLE, 0, MPI_COMM_WORLD);
-
-            for (int i = 0; i < size; i++) {
-                total_sample_size += receive_sizes[i];
-            }
-
-            
-        }
-
-        MPI_File_close(&sample_file);
     }
+
+    MPI_File_close(&sample_file);
 
     MPI_Finalize();
 

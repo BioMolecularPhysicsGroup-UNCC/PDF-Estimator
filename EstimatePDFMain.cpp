@@ -187,8 +187,6 @@ int main(int argc, char** argv) {
 
         free(file_data);
 
-        std::cout << "uhm, hello?" << std::endl;
-
         int sample_size = samples.size();
         MPI_Offset total_sample_size = 0;
 
@@ -208,18 +206,17 @@ int main(int argc, char** argv) {
 
         bool sent = false;
         bool oversized = false;
-
-        //std::cout << "receive time!" << std::endl;
     
         while ((division *= 2, division) < size*2) {
+            int* temp_ranks = new int[size];
+            std::copy(rank_sizes, rank_sizes + size, temp_ranks);
+
             for (int i = 0; i < size - division; i += division) {
                 long int sum = (long int)rank_sizes[i] + (long int)rank_sizes[i + division/2];
 
                 if (sum > MAX_CHUNK_SAMPLE_SIZE) {
                     oversized = true;
-                    for (int j = 0; j < i; j += division) {
-                        rank_sizes[j] -= rank_sizes[j + division/2];
-                    }
+                    std::copy(temp_ranks, temp_ranks + size, rank_sizes);
                     break;
                 } else {
                     rank_sizes[i] = (int)sum;
@@ -268,9 +265,7 @@ int main(int argc, char** argv) {
             }
         }
 
-        if (rank == 0) {
-            std::cout << "i wonder if we actually sorted" << std::endl;
-
+        if (!oversized && rank == 0) {
             ofstream fileout("temp.txt", ios::out);
 
             for (double sample : samples) {
@@ -278,19 +273,103 @@ int main(int argc, char** argv) {
             }
 
             fileout.close();
+        } else if (oversized) {
+            division /= 2;
 
-            std::cout << "done sorting" << std::endl;
-        }
+            // we couldn't fit everything into a single node, we need to chunk
+            int chunk_size = (MAX_CHUNK_SAMPLE_SIZE - rank_sizes[0])/(size/division);
+
+            int divided_size = division == 1 ? size : (size/division) + 1;
+
+            int* active_sizes = new int[divided_size];
+            int* incoming_sizes = new int[divided_size];
+            int* displacements = new int[divided_size];
+            int* offset = new int[divided_size];
+
+            displacements[0] = 0;
+            incoming_sizes[0] = rank_sizes[0];
+
+            for (int k = 0; k < size; k += division) {
+                active_sizes[k/division] = rank_sizes[k];
+                offset[k] = 0;
+
+                if (k != 0) {
+                    incoming_sizes[k/division] = std::min(chunk_size, rank_sizes[k]);
+                    displacements[k/division] = displacements[(k-division)/division] + incoming_sizes[(k-division)/division];
+                }
+            }
+
+            if (rank == 0) {
+                samples.resize(MAX_CHUNK_SAMPLE_SIZE);
+
+                MPI_Gatherv(MPI_IN_PLACE, sample_size, MPI_DOUBLE, &samples[0], 
+                    incoming_sizes, displacements, MPI_DOUBLE, 0, MPI_COMM_WORLD);
+
+                for (int k = division; k < size; k += division) {               
+                    active_sizes[k/division] -= incoming_sizes[k/division];
+                }
+
+                vector<double> new_samples;
+
+                // to be configured, just temporary for now
+                ofstream binout("temp.bin", ios::out | ios::binary);
+
+                for (MPI_Offset i = 0; i < total_sample_size; i++) {
+                    double minimum = numeric_limits<double>::max();
+                    int index = 0;
+
+                    for (int j = 0; j < divided_size; j++) {
+                        if (incoming_sizes[j] != 0 && samples[offset[j] + displacements[j]] < minimum) {
+                            minimum = samples[offset[j] + displacements[j]];
+                            index = j;
+                        }
+                    }
+
+                    new_samples.push_back(minimum);
+                    offset[index]++;
+
+                    if (offset[index] == incoming_sizes[index]) {
+
+                        if (index) {
+                            incoming_sizes[index] = std::min(chunk_size, active_sizes[index]);
+                            active_sizes[index] -= incoming_sizes[index];
+
+                            if (incoming_sizes[index] != 0) 
+                                MPI_Recv(&samples[displacements[index]], incoming_sizes[index], MPI_DOUBLE, index * division, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+                            
+                            offset[index] = 0;
+                        } else {
+                            incoming_sizes[0] = 0;
+                        }
+                    }
+
+                    if (new_samples.size() == MAX_CHUNK_SAMPLE_SIZE) {
+                        binout.write((char*)&new_samples[0], sizeof(double) * MAX_CHUNK_SAMPLE_SIZE);
+                        new_samples.clear();
+                        // should chunk here
+                    }
+
+                }
+
+                binout.write((char*)&new_samples[0], sizeof(double) * new_samples.size());
+                new_samples.clear();
+                binout.close();
+                
+            } else if (rank % division == 0) {
+
+                MPI_Gatherv(&samples[0], incoming_sizes[rank/division], MPI_DOUBLE, NULL, 
+                        NULL, NULL, MPI_DOUBLE, 0, MPI_COMM_WORLD);
+
+                int remaining = sample_size - incoming_sizes[rank/division];
+
+                while (remaining > 0) {
+                    MPI_Ssend(&samples[sample_size - remaining], std::min(chunk_size, remaining), MPI_DOUBLE, 0, 0, MPI_COMM_WORLD);
+                    remaining -= std::min(chunk_size, remaining);
+                }
+            }
+        } 
 
         std::cout << samples.size() << " compared with " << total_sample_size << std::endl;
-
-        //ofstream fileout("temp.bin", ios::out | ios::binary);
-        //fileout.write((char*)&samples[0], samples.size() * sizeof(double));
-        //fileout.close();
-
-        
-
-
     } else {
         if (rank == 0) {
             file_data = (char*)malloc(sizeof(char) * file_size);

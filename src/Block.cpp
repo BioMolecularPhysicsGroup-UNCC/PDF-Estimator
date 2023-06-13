@@ -20,18 +20,21 @@ Block::Block(vector <double> sample, int nPoints, int N, int blockNumber, bool d
     out.print("in block");
     sampleLength = sample.size();    
     normalize = 1.0 * sampleLength / N;
-    estimateBlock();
+    //estimateBlock();
 }
 
 Block::~Block() {
 }
 
-void Block::estimateBlock() {              
+bool Block::estimateBlock() {              
     
     MinimizeScore minimumPDF = MinimizeScore();
     minimumPDF.out.debug = false;//out.debug;
     InputParameters input;
-    input.SURDTarget = 20;
+
+    // dynamic SURD Target
+    input.SURDTarget = 50*(((double)sample.size() - 40.0)/99960.0) + 20;
+
     input.maxLagrange = 100;
     input.smooth = 100;
     InputData data = InputData(input);
@@ -40,7 +43,9 @@ void Block::estimateBlock() {
     
     data.setData(sample);     
     if (data.processData()) {      
-        minimumPDF.minimize(input, data);
+        if (!minimumPDF.minimize(input, data)) {
+            return false;
+        }
         write.createSolution(input, data, minimumPDF);        
         xAll = write.x;
         pdf = write.PDF;  
@@ -60,6 +65,8 @@ void Block::estimateBlock() {
         x = write.interpolateGrid(cdf, write.x, gridPoints);  
         xMin = write.min;
         xMax = write.max;
+
+        return true;
        
 /*        ostringstream blockName; 
         blockName << blockNumber;
@@ -75,7 +82,9 @@ void Block::estimateBlock() {
  */
   
         
-    }  
+    } else {
+        return false;
+    }
 }
  
 double Block::cdfPoint(double point) {

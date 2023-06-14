@@ -39,7 +39,6 @@ public:
     
     double pdfPoint(double x);
     double cdfPoint(double x);    
-    bool estimateBlock();
     
     OutputControl out;   
    
@@ -52,7 +51,7 @@ private:
     vector <double> xAll;
       
     WriteResults write;
-    
+    void estimateBlock();
     
 };
 

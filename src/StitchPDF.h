@@ -71,7 +71,7 @@ private:
     void estimate();
     void stitch();
     
-    bool uniformSplit(int left, int right);
+    int uniformSplit(const vector <double> &sample);
     double getRatio(const vector <double> &sample, int start, int stop);
 };
 

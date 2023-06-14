@@ -17,7 +17,6 @@ stitchPDF::stitchPDF(vector<double> sample) {
 }
 
 void stitchPDF::process() {
-    /*
     out.print("branch");
     branch(0, Ns - 1);  
 //    branchNC();
@@ -27,17 +26,6 @@ void stitchPDF::process() {
     estimate(); 
     out.print("stitch");  
     stitch(); 
-    */
-    size_t block_count = std::max((size_t)1, sample.size()/50000);
-    int block_size = sample.size()/block_count;
-
-    #pragma omp parallel for
-    for (int b = 0; b < block_count; b++) {
-        int start = b*block_size;
-        int end = b == block_count - 1 ? sample.size() : (b+1)*block_size;
-
-        branch(start, end);
-    }
 }
 
 stitchPDF::stitchPDF(const stitchPDF& orig) {
@@ -83,60 +71,30 @@ vector <double> stitchPDF::getCDF(int nPoints){
 }
 
 void stitchPDF::branch(int left, int right) {
-    #pragma omp parallel 
-    {
-        if (right - left >= 40) {
-            if (uniformSplit(left, right - 1)) {
-                branch(left, (right+left)/2);
-
-                #pragma omp task untied final(right - left < 10000)
-                branch((right+left)/2 + 1, right);
-
-            } else {
-                vector <double> range(sample.begin() + left, sample.begin() + right - 1);
-                Block block = Block(range, 10, Ns, 0, out.debug);
-
-                if (!block.estimateBlock()) {
-                    branch(left, (right+left)/2);
-
-                    #pragma omp task untied final(right - left < 10000)
-                    branch((right+left)/2 + 1, right);
-
-                } else {
-
-                    #pragma omp critical
-                    {
-                        blocks.push_back(block);
-                        x.insert(x.end(), block.x.begin(), block.x.end());
-                    }
-                }
-
-            }
-        } else {
-            vector <double> range(sample.begin() + left, sample.begin() + right - 1);
-            Block block = Block(range, 10, Ns, 0, out.debug);
-            block.estimateBlock();
-
-            #pragma omp critical
-            {
-                blocks.push_back(block);
-                x.insert(x.end(), block.x.begin(), block.x.end());
-            }
+    vector <double> range(sample.begin() + left, sample.begin() + right + 1);
+    int partition = uniformSplit(range);
+    if (partition > 0) {        
+        if ((right - (partition + left)) > window) {
+            branch(left, partition + left);
         }
-
-        #pragma omp taskyield
+        partition += left;
+        partitions.push_back(partition);
+        out.print("partition ", partition);
+        if ((right - partition) > window) {
+            branch(partition, right);
+        }
     }
 }
 
 
-bool stitchPDF::uniformSplit(int left, int right) {    
-    int n = right - left;    
+int stitchPDF::uniformSplit(const vector <double> &sample) {    
+    int n = sample.size();    
     double threshold = thresholdCoeff * pow(n, thresholdExp);    
-    int partition = ceil(n/2);
+    int partition = (int) ceil(n / 2);
     
     vector <double> dx;
     dx.reserve(n - 1);
-    for (int i = left; i < right - 1; i++) {
+    for (int i = 0; i < (n - 1); i++) {
         dx.push_back(sample[i + 1] - sample[i]);
     }  
     
@@ -144,12 +102,12 @@ bool stitchPDF::uniformSplit(int left, int right) {
     double ratioRight = getRatio(dx, partition - 1, n - 1);     
     double average = (ratioLeft + ratioRight) / 2;
     if (average < threshold) {
-        return false;            
+        partition = -1;             
     } else {
 out.print("ratio", average);
 out.print("threshold", threshold);
     }
-    return true;
+    return partition;
 }
 
 static inline void re_max(vector<double> &maxes, int window) {
@@ -321,4 +279,30 @@ void stitchPDF::stitch() {
     
 //    WriteResults write;
 //    write.writeColumns("stitched.txt", x, pdf, x.size());
+}
+
+void stitchPDF::branchNC() {
+    int nBranch = 1;
+    partitions.push_back(0);
+    partitions.push_back(Ns - 1);
+    for (int j = 1; j < maxLevel; j++) {
+        out.print("j", j);
+        bool addPartition = 0;
+        for (int iBranch = 0; iBranch < nBranch; iBranch++) {
+            vector <double> range(sample.begin() + partitions[iBranch], sample.begin() + partitions[iBranch + 1] + 1);
+            int partition = uniformSplit(range);
+            if (partition > 0) {
+//                out.print("partition", partitions[iBranch] + partition);
+                partitions.push_back(partitions[iBranch] + partition);
+                out.print("partition", partitions[iBranch] + partition);
+                addPartition = 1;
+            }     
+        }
+        if (addPartition) {
+            sort(partitions.begin(), partitions.end()); 
+            nBranch = partitions.size() - 1;
+        } else {
+            break;
+        }        
+    }
 }

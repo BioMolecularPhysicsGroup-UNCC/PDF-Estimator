@@ -71,8 +71,8 @@ vector <double> stitchPDF::getCDF(int nPoints){
 }
 
 void stitchPDF::branch(int left, int right) {
-    vector <double> range(sample.begin() + left, sample.begin() + right + 1);
-    int partition = uniformSplit(range);
+    //vector <double> range(sample.begin() + left, sample.begin() + right + 1);
+    int partition = uniformSplit(left, right + 1);
     if (partition > 0) {        
         if ((right - (partition + left)) > window) {
             branch(left, partition + left);
@@ -87,14 +87,14 @@ void stitchPDF::branch(int left, int right) {
 }
 
 
-int stitchPDF::uniformSplit(const vector <double> &sample) {    
-    int n = sample.size();    
+int stitchPDF::uniformSplit(int left, int right) {    
+    int n = right - left;    
     double threshold = thresholdCoeff * pow(n, thresholdExp);    
     int partition = (int) ceil(n / 2);
     
     vector <double> dx;
     dx.reserve(n - 1);
-    for (int i = 0; i < (n - 1); i++) {
+    for (int i = left; i < (right - 1); i++) {
         dx.push_back(sample[i + 1] - sample[i]);
     }  
     

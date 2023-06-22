@@ -12,11 +12,12 @@
 
 #include "Block.h"
 
-Block::Block(vector <double> sample, int nPoints, int N, int blockNumber, bool debug) {
+Block::Block(vector <double> sample, int nPoints, int N, int blockNumber, bool debug, bool layerOne) {
     this->sample = sample;
     this->nPoints = nPoints;
     this->blockNumber = blockNumber;
     this->out.debug = debug;
+    this->layerOne = layerOne;
     out.print("in block");
     sampleLength = sample.size();    
     normalize = 1.0 * sampleLength / N;
@@ -26,26 +27,30 @@ Block::Block(vector <double> sample, int nPoints, int N, int blockNumber, bool d
 Block::~Block() {
 }
 
-bool Block::estimateBlock() {              
+bool Block::estimateBlock(double lowerBound, double upperBound) {              
     
     MinimizeScore minimumPDF = MinimizeScore();
     minimumPDF.out.debug = false;//out.debug;
     InputParameters input;
 
     // dynamic SURD Target
-    input.SURDTarget = 50*(((double)sample.size() - 40.0)/99960.0) + 20;
+    input.SURDTarget = layerOne ? 50*(((double)sample.size() - 40.0)/99960.0) + 20 : 20;
 
-    input.maxLagrange = 100;
-    input.smooth = 100;
+    input.maxLagrange = layerOne ? 8 : 250;
+    input.smooth = 200;
+
+    input.lowerBound = lowerBound;
+    input.upperBound = upperBound;
+
+    input.upperBoundSpecified = true;
+    input.lowerBoundSpecified = true;
     InputData data = InputData(input);
     
     out.print("sample size ", (int) sample.size());
     
     data.setData(sample);     
     if (data.processData()) {      
-        if (!minimumPDF.minimize(input, data)) {
-            return false;
-        }
+        bool minimized = minimumPDF.minimize(input, data);
         write.createSolution(input, data, minimumPDF);        
         xAll = write.x;
         pdf = write.PDF;  
@@ -66,7 +71,7 @@ bool Block::estimateBlock() {
         xMin = write.min;
         xMax = write.max;
 
-        return true;
+        return minimized;
        
 /*        ostringstream blockName; 
         blockName << blockNumber;

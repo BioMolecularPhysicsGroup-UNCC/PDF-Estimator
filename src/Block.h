@@ -25,7 +25,7 @@ using namespace std;
 
 class Block {
 public:
-    Block(vector <double> sample, int nPoints, int N, int blockNumber, bool debug);
+    Block(vector <double> sample, int nPoints, int N, int blockNumber, bool debug, bool layerOne);
     virtual ~Block();       
     
     int blockNumber;
@@ -39,7 +39,7 @@ public:
     
     double pdfPoint(double x);
     double cdfPoint(double x);    
-    bool estimateBlock();
+    bool estimateBlock(double lowerBound, double upperBound);
     
     OutputControl out;   
    
@@ -49,6 +49,7 @@ private:
     int nPoints;    
     int sampleLength;
     double normalize;
+    bool layerOne;
     vector <double> xAll;
       
     WriteResults write;

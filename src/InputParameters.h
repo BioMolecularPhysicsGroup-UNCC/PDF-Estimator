@@ -32,10 +32,10 @@ public:
     string debugOpt;
     bool   debug;
    
-    string inputPath;
-    string inputFile;
-    string outputFile;
-    string outputPath;
+    string  inputPath;
+    string  inputFile;
+    string  outputFile;
+    string  outputPath;
     bool    writeFile;
     bool    writeHeader;
     bool    writeFailed;
@@ -47,8 +47,8 @@ public:
     string  sqrFile;
     bool    adaptive;
         
-    float   lowerBound;
-    float   upperBound;
+    double  lowerBound;
+    double  upperBound;
     bool    lowerBoundSpecified;
     bool    upperBoundSpecified;
     

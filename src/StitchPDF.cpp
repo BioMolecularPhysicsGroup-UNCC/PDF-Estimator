@@ -32,9 +32,9 @@ void stitchPDF::process() {
     #pragma omp parallel for
     for (int b = 0; b < block_count; b++) {
         int start = b*block_size;
-        int end = b == block_count - 1 ? sample.size() - 1 : (b+1)*block_size;
+        int end = b == block_count - 1 ? sample.size() : (b+1)*block_size;
 
-        branch(start, end);
+        branch(start, end - 1);
     }
 
     // Sort the blocks by their placement 
@@ -95,36 +95,32 @@ vector <double> stitchPDF::getCDF(int nPoints){
 }
 
 void stitchPDF::branch(int left, int right) {
-    #pragma omp parallel 
-    {
+    double leftBoundary = left == 0 ? sample[0] : (sample[left] + sample[left - 1])/2;
+    double rightBoundary = right == sample.size() - 1 
+        ? sample[sample.size() - 1] 
+        : (sample[right] + sample[right + 1])/2;
+
+    if ((right - left >= 40) || !uniformSplit(left, right)) {
+
         vector <double> range(sample.begin() + left, sample.begin() + right);
+        Block block = Block(std::move(range), 10, Ns, left, out.debug, true);
 
-        double leftBoundary = left == 0 ? sample[0] : (sample[left] + sample[left - 1])/2;
-        double rightBoundary = right == sample.size() - 1 
-            ? sample[sample.size() - 1] 
-            : (sample[right] + sample[right + 1])/2;
-
-        Block block = Block(range, 10, Ns, left, out.debug, true);
-
-        if (uniformSplit(left, right) || (!block.estimateBlock(leftBoundary, rightBoundary) && (right - left >= 40))) {
-            #pragma omp task untied final(right - left < 1000)
-            branch(left, (right+left)/2);
-
-            branch((right+left)/2 + 1, right);
-
-        } else {
+        // block.estimateBlock has side-effects and returns true on success -
+        // short-circuiting is used to evaluate regardless of success and size
+        if (block.estimateBlock(leftBoundary, rightBoundary) || (right - left >= 40)) {
             #pragma omp critical
             {
                 partitions.push_back(left);
                 blocks.push_back(block);
                 x.insert(x.end(), block.x.begin(), block.x.end());
             }
+            return;
         }
-
-        #pragma omp taskyield
     }
+    
+    branch(left, (right+left)/2);
+    branch((right+left)/2 + 1, right);
 }
-
 
 bool stitchPDF::uniformSplit(int left, int right) {    
     int n = right - left;    
@@ -221,7 +217,7 @@ void stitchPDF::stagger() {
 
             vector<double> range(sample.begin() + left, sample.begin() + right); 
 
-            blocks.insert(blocks.begin() + (2*l)+1, Block(range, 10, Ns, 2*(l+1), out.debug, false));
+            blocks.insert(blocks.begin() + (2*l)+1, Block(std::move(range), 10, Ns, 2*(l+1), out.debug, false));
         }
 
         #pragma omp parallel for
@@ -271,9 +267,11 @@ void stitchPDF::stitch() {
             if (!indicator) {
                 indicator = true;
 
-                while (x[i] < blocks[j].xMin) j += 2;
+                while (x[i] > blocks[j].xMax) j += 2;
 
-                k = (j > 0 && x[i] < blocks[j - 1].xMax) ? j - 1 : j + 1;
+                k = (j == blocks.size() - 1 || (j > 0 && x[i] < blocks[j - 1].xMax)) 
+                    ? j - 1 
+                    : j + 1;
 
                 jMid = (blocks[j].xMin + blocks[j].xMax) / 2;
             }

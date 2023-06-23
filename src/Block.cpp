@@ -50,7 +50,7 @@ bool Block::estimateBlock(double lowerBound, double upperBound) {
     
     data.setData(sample);     
     if (data.processData()) {      
-        bool minimized = minimumPDF.minimize(input, data);
+        bool minimized_failed = minimumPDF.minimize(input, data);
         write.createSolution(input, data, minimumPDF);        
         xAll = write.x;
         pdf = write.PDF;  
@@ -71,7 +71,7 @@ bool Block::estimateBlock(double lowerBound, double upperBound) {
         xMin = write.min;
         xMax = write.max;
 
-        return minimized;
+        return !minimized_failed;
        
 /*        ostringstream blockName; 
         blockName << blockNumber;

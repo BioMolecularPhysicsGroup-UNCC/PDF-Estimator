@@ -100,6 +100,11 @@ void stitchPDF::branch(int left, int right) {
         ? sample[sample.size() - 1] 
         : (sample[right] + sample[right + 1])/2;
 
+    // if leftBoundary is close enough (find a good epsilon as a hyperparameter) to rightBoundary,
+    // we should compute the area the same (n / N), but how do we get the height? (pdf, derivative)
+    // if we are in a degenerate block, find the first left-most and right-most non-too-close points and 
+    // get their difference. this is dx
+
     if ((right - left >= 40) || !uniformSplit(left, right)) {
 
         vector <double> range(sample.begin() + left, sample.begin() + right);
@@ -261,6 +266,10 @@ void stitchPDF::stitch() {
         pdf.resize(x.size());
 
         bool indicator = false;
+
+        // instead of a union of layer 1 and layer 2 block x points, get sort of "chunks" of
+        // block overlaps and uniformly interpolate HYPERPARAM (right now 50) points between these edges
+        // maybe do not put on the edges (2 points makes three regions sort of deal)
 
         #pragma omp parallel for schedule(static) firstprivate(j, k, indicator, jMid)
         for (unsigned int i = 0; i < x.size() - 1; i++) {

@@ -12,12 +12,12 @@
 
 #include "Block.h"
 
-Block::Block(vector <double> sample, int nPoints, int N, int blockNumber, bool debug, bool layerOne) {
+Block::Block(vector <double> sample, int nPoints, int N, int blockNumber, bool debug, LayerOptions opts) {
     this->sample = sample;
     this->nPoints = nPoints;
     this->blockNumber = blockNumber;
     this->out.debug = debug;
-    this->layerOne = layerOne;
+    this->layerOpts = opts;
     out.print("in block");
     sampleLength = sample.size();    
     normalize = 1.0 * sampleLength / N;
@@ -34,16 +34,30 @@ bool Block::estimateBlock(double lowerBound, double upperBound) {
     InputParameters input;
 
     // dynamic SURD Target
-    input.SURDTarget = layerOne ? 50*(((double)sample.size() - 40.0)/99960.0) + 20 : 20;
+    input.SURDTarget = layerOpts.isLayerOne
+        ? 50*(((double)sample.size() - 40.0)/99960.0) + 20 
+        : 20;
 
-    input.maxLagrange = layerOne ? 8 : 250;
+    input.maxLagrange = (layerOpts.isLayerOne && !(layerOpts.isFarLeft || layerOpts.isFarRight))
+        ? 8 
+        : 250;
+
     input.smooth = 200;
 
-    input.lowerBound = lowerBound;
-    input.upperBound = upperBound;
+    if (!layerOpts.isFarLeft) {
+        input.lowerBound = lowerBound;
+        input.lowerBoundSpecified = true;
+    } else {
+        input.lowerBoundSpecified = false;
+    }
 
-    input.upperBoundSpecified = true;
-    input.lowerBoundSpecified = true;
+    if (!layerOpts.isFarRight) {
+        input.upperBound = upperBound;
+        input.upperBoundSpecified = true;
+    } else {
+        input.upperBoundSpecified = false;
+    }
+
     InputData data = InputData(input);
     
     out.print("sample size ", (int) sample.size());

@@ -107,17 +107,18 @@ void stitchPDF::branch(int left, int right) {
 
     if ((right - left >= 40) || !uniformSplit(left, right)) {
 
+        LayerOptions layer = { true, left == 0, right == sample.size() - 1 };
         vector <double> range(sample.begin() + left, sample.begin() + right);
-        Block block = Block(std::move(range), 10, Ns, left, out.debug, true);
+        Block block = Block(std::move(range), 10, Ns, left, out.debug, layer);
 
         // block.estimateBlock has side-effects and returns true on success -
         // short-circuiting is used to evaluate regardless of success and size
-        if (block.estimateBlock(leftBoundary, rightBoundary) || (right - left >= 40)) {
+        if (block.estimateBlock(leftBoundary, rightBoundary) || (right - left <= 40)) {
             #pragma omp critical
             {
                 partitions.push_back(left);
                 blocks.push_back(block);
-                x.insert(x.end(), block.x.begin(), block.x.end());
+                //x.insert(x.end(), block.x.begin(), block.x.end());
             }
             return;
         }
@@ -141,13 +142,12 @@ bool stitchPDF::uniformSplit(int left, int right) {
         dx.push_back(sample[i + 1] - sample[i]);
     }  
     
-    double ratioLeft = getRatio(dx, 0, partition - 1);
-    double ratioRight = getRatio(dx, partition - 1, n - 1);     
-    double average = (ratioLeft + ratioRight) / 2;
-    if (average < threshold) {
+    double ratio = getRatio(dx);
+    
+    if (ratio < threshold) {
         return false;            
     } else {
-out.print("ratio", average);
+out.print("ratio", ratio);
 out.print("threshold", threshold);
     }
     return true;
@@ -182,16 +182,15 @@ static inline void re_min(vector<double> &mins, int window) {
 }
 
 
-double stitchPDF::getRatio(const vector <double> &sample, int start, int stop) {
-    int n = stop - start + 1;    
+inline double stitchPDF::getRatio(const vector <double> &sample) {
 
-    vector<double> maxes(sample.begin() + start, sample.begin() + start + window);
-    vector<double> mins(sample.begin() + start, sample.begin() + start + window);
+    vector<double> maxes(sample.begin(), sample.begin() + window);
+    vector<double> mins(sample.begin(), sample.begin() + window);
 
     re_min(mins, window);
     re_max(maxes, window);
 
-    for (int j = start + window + 1; j < stop; j++) {
+    for (int j = window + 1; j < sample.size(); j++) {
         if (sample[j] > maxes[0]) {
             maxes[0] = sample[j];
             re_max(maxes, window);
@@ -217,62 +216,77 @@ double stitchPDF::getRatio(const vector <double> &sample, int start, int stop) {
 void stitchPDF::stagger() {
     if (blocks.size() > 1) {
         for (int l = 0; l < partitions.size() - 2; l++) {
-            int left = ((partitions[l] + partitions[l + 1])/2) - 8;
-            int right = ((partitions[l + 1] + partitions[l + 2])/2) + 8;
+            int left = ((partitions[l] + partitions[l + 1])/2) - BUFFER;
+            int right = ((partitions[l + 1] + partitions[l + 2])/2) + BUFFER;
 
             vector<double> range(sample.begin() + left, sample.begin() + right); 
+            LayerOptions layer = { false, false, false };
 
-            blocks.insert(blocks.begin() + (2*l)+1, Block(std::move(range), 10, Ns, 2*(l+1), out.debug, false));
+            blocks.insert(blocks.begin() + (2*l)+1, Block(std::move(range), 10, Ns, 2*(l+1), out.debug, layer));
         }
 
         #pragma omp parallel for
         for (int l = 0; l < partitions.size() - 2; l++) {
             // just recompute for now
-            int left = ((partitions[l] + partitions[l + 1])/2) - 8;
-            int right = ((partitions[l + 1] + partitions[l + 2])/2) + 8;
+            int left = ((partitions[l] + partitions[l + 1])/2) - BUFFER;
+            int right = ((partitions[l + 1] + partitions[l + 2])/2) + BUFFER;
 
             double leftBoundary = (sample[left] + sample[left - 1])/2;
             double rightBoundary = (sample[right] + sample[right + 1])/2;
 
             blocks[(2*l)+1].estimateBlock(leftBoundary, rightBoundary);
 
-            #pragma omp critical
-            x.insert(x.end(), blocks[(2*l)+1].x.begin(), blocks[(2*l)+1].x.end());
+            //#pragma omp critical
+            //x.insert(x.end(), blocks[(2*l)+1].x.begin(), blocks[(2*l)+1].x.end());
         }
     }
 }
 
 void stitchPDF::stitch() {  
 
-    sort(x.begin(), x.end());
+    //sort(x.begin(), x.end());
     
     double power = 2;
     
-    double u1, u2, p1, p2, jMid, endMid;
+    double u1, u2, p1, p2, jMid, endMid, jMidInK, jMaxInK, jMinInK, jMinCdf;
 
     int j = 0; // bottom block
     int k = 1; // top block
+    int ji = 0;
+    int ki = 0;
     
     int nBlocks = blocks.size();
+
+    int xSize = 0;
+
+    for (int i = 0; i < blocks.size(); i++) {
+        xSize += blocks[i].x.size();
+    }
 
     if (nBlocks == 1) {
         x = blocks[0].x;
         pdf = blocks[0].pdf;
     } else {
+        // get the last two x values and store them for computing CDF.
+        double prev = blocks[0].x[0];
+        double earlierPrev = 0;
+
         double topBlockStart = blocks[1].xMin;
         endMid = (blocks[blocks.size() - 1].xMin + blocks[blocks.size() - 1].xMax) / 2;
-        jMid = (blocks[j].xMin + blocks[j].xMax) / 2;
 
-        pdf.resize(x.size());
+        jMid = (blocks[j].xMin + blocks[j].xMax) / 2;
+        jMidInK = blocks[k].cdfPoint(jMid);
+        jMaxInK = blocks[k].cdfPoint(blocks[j].xMax);
+        jMinInK = blocks[k].cdfPoint(blocks[j].xMin);
+        jMinCdf = blocks[j].cdfPoint(jMid);
+
+        pdf.resize(xSize);
 
         bool indicator = false;
 
-        // instead of a union of layer 1 and layer 2 block x points, get sort of "chunks" of
-        // block overlaps and uniformly interpolate HYPERPARAM (right now 50) points between these edges
-        // maybe do not put on the edges (2 points makes three regions sort of deal)
-
-        #pragma omp parallel for schedule(static) firstprivate(j, k, indicator, jMid)
-        for (unsigned int i = 0; i < x.size() - 1; i++) {
+        //#pragma omp parallel for schedule(static) firstprivate(j, k, indicator, jMid)
+        for (unsigned int i = 0; i < xSize; i++) {
+            /*
             if (!indicator) {
                 indicator = true;
 
@@ -284,56 +298,81 @@ void stitchPDF::stitch() {
 
                 jMid = (blocks[j].xMin + blocks[j].xMax) / 2;
             }
+            */
 
-            if (x[i] > endMid)
-                pdf[i] = x[i];
-            else if (x[i] < topBlockStart) {
-                pdf[i] = x[i];  
+            if (prev > endMid) {
+                earlierPrev = prev;
+                prev = pdf[i] = blocks[blocks.size() - 1].x[ji++];
+            } else if (prev < topBlockStart) {
+                earlierPrev = prev;
+                prev = pdf[i] = blocks[0].x[ji++];  
             } else {
                 if (j < k) {
-                    u1 = (1 - blocks[j].cdfPoint(x[i])) / 
-                        (1 - blocks[j].cdfPoint(jMid));
+                    u1 = (1 - blocks[j].cdfPointHint(prev, ji)) / 
+                        (1 - jMidInK);
 
-                    u2 = (blocks[k].cdfPoint(x[i]) - blocks[k].cdfPoint(jMid) ) /
-                        (blocks[k].cdfPoint(blocks[j].xMax) - blocks[k].cdfPoint(jMid));
+                    u2 = (blocks[k].cdfPointHint(prev, ki) - jMidInK) /
+                        (jMaxInK - jMidInK);
 
-                    p1 = blocks[j].pdfPoint(x[i]) * u1;
-                    p2 = blocks[k].pdfPoint(x[i]) * u2;
-
-                    if (x[i + 1] > blocks[j].xMax) {
-                        j += 2;
-
-                        jMid = (blocks[j].xMin + blocks[j].xMax) / 2;
-                    }
-
+                    p1 = blocks[j].pdfPointHint(prev, ji) * u1;
+                    p2 = blocks[k].pdfPointHint(prev, ki) * u2;
                 } else {
-                    u1 = ((1 - blocks[k].cdfPoint(x[i])) - (1 - blocks[k].cdfPoint(jMid))) / 
-                        ((1 - blocks[k].cdfPoint(blocks[j].xMin)) - (1 - blocks[k].cdfPoint(jMid)));
+                    u1 = ((1 - blocks[k].cdfPointHint(prev, ki)) - (1 - jMidInK)) / 
+                        ((1 - jMinInK) - (1 - jMidInK));
 
-                    u2 = blocks[j].cdfPoint(x[i]) / blocks[j].cdfPoint(jMid);
+                    u2 = blocks[j].cdfPoint(prev) / jMinCdf;
 
-                    p1 = blocks[k].pdfPoint(x[i]) * u1;
-                    p2 = blocks[j].pdfPoint(x[i]) * u2;
-
-                    if (x[i + 1] > jMid && x[i] < jMid) {
-                        k += 2;
-                    }
+                    p1 = blocks[k].pdfPointHint(prev, ki) * u1;
+                    p2 = blocks[j].pdfPointHint(prev, ji) * u2;
                 }   
 
                 pdf[i] = (p1 + p2) / (u1 + u2);
+
+                double nextJ = ji < blocks[j].x.size() - 1 ? blocks[j].x[ji + 1] : blocks[j + 2].x[0];
+                double nextK = k < blocks.size() - 2 
+                    ? (blocks[k].x[ki + 1] < jMid ? blocks[k].x[ki + 1] : blocks[k + 2].x[BUFFER])
+                    : blocks[k].x[ki];
+
+
+                earlierPrev = prev;
+                if (nextJ < nextK) {
+                    prev = nextJ;
+                    if (ji == blocks[j].x.size() - 1) {
+                        ji = 0;
+                        j += 2;
+
+                        jMid = (blocks[j].xMin + blocks[j].xMax) / 2;
+                        jMinCdf = blocks[j].cdfPoint(jMid);
+                        jMidInK = blocks[k].cdfPoint(jMid);
+                        jMaxInK = blocks[k].cdfPoint(blocks[j].xMax);
+                        jMinInK = blocks[k].cdfPoint(blocks[j].xMin);
+                    } else {
+                        ji++;
+                    }
+                } else {
+                    prev = nextK;
+                    if (ki == blocks[k].x.size() - 1) {
+                        ki = BUFFER;
+                        k += 2;
+
+                        jMidInK = blocks[k].cdfPoint(jMid);
+                        jMaxInK = blocks[k].cdfPoint(blocks[j].xMax);
+                        jMinInK = blocks[k].cdfPoint(blocks[j].xMin);
+                    } else {
+                        ki++;
+                    }
+                }
+            }
+
+            if (i != 0) {
+                double average = 0.5 * (pdf[i] + pdf[i-1]);
+                double area = average * (prev - earlierPrev);
+                //cdf[i] = cdf[i - 1] + area;  
             }
         }
     }
-
-    pdf[x.size() - 1] = x[x.size() - 1];
-
-    cdf.push_back(0);
-    for (unsigned int i = 1; i < x.size(); i++) {   
-        double average = 0.5 * (pdf[i] + pdf[i-1]);
-        double area = average * (x[i] - x[i - 1]);
-        cdf.push_back(cdf[i - 1] + area);  
-    }
     
+    cdf[0] = 0.0;
     
 //    WriteResults write;
 //    write.writeColumns("stitched.txt", x, pdf, x.size());

@@ -21,6 +21,7 @@
 #include "OutputControl.h"
 #include "Block.h"
 
+#define BUFFER 8
 
 using namespace std;
 
@@ -72,7 +73,7 @@ private:
     void stitch();
     
     bool uniformSplit(int left, int right);
-    double getRatio(const vector <double> &sample, int start, int stop);
+    inline double getRatio(const vector <double> &sample);
 };
 
 #endif /* STITCHPDF_H */

@@ -93,10 +93,13 @@ bool InputData::processData() {
     
     minimumRaw = rawData[0];
     maximumRaw = rawData[rawData.size() - 1];
+
+    /*
     if (minimumRaw == maximumRaw) {        
         out.error("All input data has the same value ", minimumRaw);
         return false;        
     }
+    */
     
     int nValues = rawData.size();
     if (input.upperBoundSpecified) {  
@@ -118,9 +121,11 @@ bool InputData::processData() {
         }
     }
     
+    /*
     if (input.outlierCutoff > 0) {        
         identifyOutliers();
     }
+    */
     
     if (!transformData()) {
         return false;

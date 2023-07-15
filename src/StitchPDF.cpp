@@ -29,7 +29,7 @@ void stitchPDF::process() {
     size_t block_count = std::max((size_t)1, sample.size()/50000);
     int block_size = sample.size()/block_count;
 
-    #pragma omp parallel for
+    #pragma omp parallel for schedule(static)
     for (int b = 0; b < block_count; b++) {
         int start = b*block_size;
         int end = b == block_count - 1 ? sample.size() : (b+1)*block_size;
@@ -225,7 +225,7 @@ void stitchPDF::stagger() {
             blocks.insert(blocks.begin() + (2*l)+1, Block(std::move(range), 10, Ns, 2*(l+1), out.debug, layer));
         }
 
-        #pragma omp parallel for
+        #pragma omp parallel for schedule(static)
         for (int l = 0; l < partitions.size() - 2; l++) {
             // just recompute for now
             int left = ((partitions[l] + partitions[l + 1])/2) - BUFFER;
@@ -266,7 +266,9 @@ void stitchPDF::stitch() {
     if (nBlocks == 1) {
         x = blocks[0].x;
         pdf = blocks[0].pdf;
+        cdf = blocks[0].cdf;
     } else {
+#ifdef _OLD_PDF_STITCH
         // get the last two x values and store them for computing CDF.
         double prev = blocks[0].x[0];
         double earlierPrev = 0;
@@ -370,9 +372,86 @@ void stitchPDF::stitch() {
                 //cdf[i] = cdf[i - 1] + area;  
             }
         }
+#else
+
+        int arrsize = (blocks.size() + 1) * RESOLUTION;
+        x.resize(arrsize);
+        pdf.resize(arrsize);
+        cdf.resize(arrsize);
+
+        double start, end, step,
+                bottomExtremaInTop, bottomMidInTop, bottomMidCdf;
+
+        #pragma omp parallel for schedule(static)
+        for (int i = 0; i <= blocks.size(); i++) {
+            int last;
+
+            if (i == blocks.size()) {
+                start = (blocks[i - 1].xMin + blocks[i - 1].xMax) / 2;
+                end = blocks[i - 1].xMax;
+            } else {
+                if (i % 2 == 0) {
+                    start = blocks[i].xMin;
+                    end = (blocks[i].xMin + blocks[i].xMax) / 2;
+                    
+                    if (i > 0) {
+                        bottomMidInTop = blocks[i - 1].cdfPoint(end);
+                        bottomExtremaInTop = blocks[i - 1].cdfPoint(start);
+                    }
+                } else {
+                    start = (blocks[i - 1].xMin + blocks[i - 1].xMax) / 2;
+                    end = blocks[i - 1].xMax;
+
+                    bottomMidInTop = blocks[i].cdfPoint(start);
+                    bottomExtremaInTop = blocks[i].cdfPoint(end);
+                    bottomMidCdf = blocks[i - 1].cdfPoint(start);
+                }
+            }
+
+            step = (end - start)/((double)RESOLUTION + 1.0);
+
+            for (int j = 0; j < RESOLUTION; j++) {
+
+                double xPoint = start + (step * (j + 1));
+                x[(RESOLUTION * i) + j] = xPoint;
+
+                // loop unswitching should pull this out to prevent repeated conditional checks
+                if (i == 0 || i == blocks.size()) {
+                    pdf[(RESOLUTION * i) + j] = blocks[min((size_t)i, blocks.size() - 1)].pdfPoint(xPoint);
+                } else if (i % 2 == 1) {
+                    u1 = (1 - blocks[i - 1].cdfPoint(xPoint)) / 
+                        (1 - bottomMidInTop);
+
+                    u2 = (blocks[i].cdfPoint(xPoint) - bottomMidInTop) /
+                        (bottomExtremaInTop - bottomMidInTop);
+
+                    p1 = blocks[i - 1].pdfPoint(xPoint) * u1;
+                    p2 = blocks[i].pdfPoint(xPoint) * u2;
+
+                    pdf[(RESOLUTION * i) + j] = (p1 + p2) / (u1 + u2);
+                } else {
+                    u1 = ((1 - blocks[i - 1].cdfPoint(xPoint)) - (1 - bottomMidInTop)) / 
+                        ((1 - bottomExtremaInTop) - (1 - bottomMidInTop));
+
+                    u2 = blocks[i].cdfPoint(xPoint) / bottomMidCdf;
+
+                    p1 = blocks[i - 1].pdfPoint(xPoint) * u1;
+                    p2 = blocks[i].pdfPoint(xPoint) * u2;
+
+                    pdf[(RESOLUTION * i) + j] = (p1 + p2) / (u1 + u2);
+                }
+            }
+        }
+#endif
+
+        cdf[0] = 0.0;
+
+        for (int i = 1; i < pdf.size(); i++) {
+            cdf[i] = cdf[i - 1] + ((0.5 * (pdf[i] + pdf[i - 1])) * (x[i] - x[i - 1]));
+        }
     }
     
-    cdf[0] = 0.0;
+    
     
 //    WriteResults write;
 //    write.writeColumns("stitched.txt", x, pdf, x.size());

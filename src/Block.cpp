@@ -107,14 +107,10 @@ bool Block::estimateBlock(double lowerBound, double upperBound) {
 }
  
 double Block::cdfPoint(double point) {
-    int n = xAll.size();
-    int i = 0;   
+    long n = xAll.size();
+    // 
+    long i = min((long)(lower_bound(xAll.begin(), xAll.end(), point) - xAll.begin()), n - 1);  
     
-    while (xAll[i] < point) {
-        if (++i == (n - 1)){
-            break;
-        } 
-    }
     double c;
     if ((i == 0) || (i >= (n - 1))) {
         if (i == 0) {
@@ -129,22 +125,17 @@ double Block::cdfPoint(double point) {
 }
 
 double Block::pdfPoint(double point) {
-    int n = xAll.size();
-    double c;
-    int i = 0;   
-    if (point <= xAll[i]) {
-        c = pdf[i];
-    } else {
-        if (point >= xAll[n - 1]) {
-            c = pdf[n - 1];
-        } else {    
-            while (xAll[i] < point) {
-                if (++i == (n - 1)){
-                    break;
-                } 
-            }
-            c = pdf[i - 1] + (point - xAll[i - 1]) * (pdf[i] - pdf[i - 1]) / (xAll[i] - xAll[i - 1]);
-        }
+    long n = xAll.size();
+    double c; 
+    if (point <= xAll[0]) {
+        c = pdf[0];
+    } else if (point >= xAll[n - 1]) {
+        c = pdf[n - 1];
+    } else {    
+        long i = min((long)(lower_bound(xAll.begin(), xAll.end(), point) - xAll.begin()), n - 1);  
+
+        c = pdf[i - 1] + (point - xAll[i - 1]) * (pdf[i] - pdf[i - 1]) / (xAll[i] - xAll[i - 1]);
     }
+
     return c * normalize;
 }

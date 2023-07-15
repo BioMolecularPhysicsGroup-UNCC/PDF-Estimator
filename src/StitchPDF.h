@@ -21,7 +21,8 @@
 #include "OutputControl.h"
 #include "Block.h"
 
-#define BUFFER 8
+#define BUFFER (8)
+#define RESOLUTION (50)
 
 using namespace std;
 

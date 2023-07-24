@@ -31,7 +31,7 @@ public:
     
     OutputControl out;
     
-    stitchPDF(vector<double> sample);
+    stitchPDF(vector<double> sample, InputParameters input);
     stitchPDF(const stitchPDF& orig);
     virtual ~stitchPDF();    
         
@@ -56,6 +56,12 @@ private:
     
     const double thresholdCoeff = 0.5255;
     const double thresholdExp = 1.1;
+
+    const double m0 =  1.09158290; 
+    const double b0 = -0.17402986;
+    const double m5 =  1.83306751; 
+    const double b5 = -1.38564601;
+
     const int window = 10;
     const int maxLevel = 40;
     const int maxBlock = 100000;    
@@ -65,6 +71,8 @@ private:
     vector <int> partitions;
     
     vector <Block> blocks;
+
+    InputParameters input;
     
     void branchNC();    
     
@@ -75,6 +83,7 @@ private:
     
     bool uniformSplit(int left, int right);
     inline double getRatio(const vector <double> &sample);
+    inline double getThreshold(int n);
 };
 
 #endif /* STITCHPDF_H */

@@ -29,8 +29,8 @@ class InputParameters {
  
 public:     
     
-    string debugOpt;
-    bool   debug;
+    string  debugOpt;
+    bool    debug;
    
     string  inputPath;
     string  inputFile;
@@ -62,6 +62,7 @@ public:
     int     maxLagrange;
     int     minLagrange;
     int     nLagrangeAdd;
+    int     resolution;
     double  outlierCutoff;
     bool    smooth;
     

@@ -12,12 +12,13 @@
 
 #include "Block.h"
 
-Block::Block(vector <double> sample, int nPoints, int N, int blockNumber, bool debug, LayerOptions opts) {
+Block::Block(vector <double> sample, int nPoints, int N, int blockNumber, bool debug, LayerOptions opts, InputParameters input) {
     this->sample = sample;
     this->nPoints = nPoints;
     this->blockNumber = blockNumber;
     this->out.debug = debug;
     this->layerOpts = opts;
+    this->input = input;
     out.print("in block");
     sampleLength = sample.size();    
     normalize = 1.0 * sampleLength / N;
@@ -31,7 +32,6 @@ bool Block::estimateBlock(double lowerBound, double upperBound) {
     
     MinimizeScore minimumPDF = MinimizeScore();
     minimumPDF.out.debug = false;//out.debug;
-    InputParameters input;
 
     // dynamic SURD Target
     input.SURDTarget = layerOpts.isLayerOne

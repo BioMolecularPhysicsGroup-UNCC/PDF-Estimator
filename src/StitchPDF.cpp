@@ -7,11 +7,12 @@
 
 #include "StitchPDF.h"
 
-stitchPDF::stitchPDF(vector<double> sample) {
+stitchPDF::stitchPDF(vector<double> sample, InputParameters input) {
     
     Ns = sample.size();    
     sort(sample.begin(), sample.end());       
     this->sample = sample;
+    this->input = input;
 }
 
 void stitchPDF::process() {
@@ -109,7 +110,7 @@ void stitchPDF::branch(int left, int right) {
 
         LayerOptions layer = { true, left == 0, right == sample.size() - 1 };
         vector <double> range(sample.begin() + left, sample.begin() + right);
-        Block block = Block(std::move(range), 10, Ns, left, out.debug, layer);
+        Block block = Block(std::move(range), 10, Ns, left, out.debug, layer, input);
 
         // block.estimateBlock has side-effects and returns true on success -
         // short-circuiting is used to evaluate regardless of success and size
@@ -133,8 +134,7 @@ bool stitchPDF::uniformSplit(int left, int right) {
 
     if (n < 40) return false;
 
-    double threshold = thresholdCoeff * pow(n, thresholdExp);    
-    int partition = ceil(n/2);
+    double threshold = getThreshold(n);
     
     vector <double> dx;
     dx.reserve(n - 1);
@@ -151,6 +151,16 @@ out.print("ratio", ratio);
 out.print("threshold", threshold);
     }
     return true;
+}
+
+inline double stitchPDF::getThreshold(int n) {
+    static const double log10Nmin = log10((double)maxLevel);
+    static const double log10Nmax = log10((double)maxBlock);
+
+    double log10n = log10((double)n);
+    double m = ( m0*(log10n - log10Nmin) + m5*(log10Nmax - log10n) )/(log10Nmax - log10Nmin);
+    double b = ( b0*(log10n - log10Nmin) + b5*(log10Nmax - log10n) )/(log10Nmax - log10Nmin);
+    return pow(10.0, m*log10n + b);
 }
 
 static inline void re_max(vector<double> &maxes, int window) {
@@ -222,7 +232,7 @@ void stitchPDF::stagger() {
             vector<double> range(sample.begin() + left, sample.begin() + right); 
             LayerOptions layer = { false, false, false };
 
-            blocks.insert(blocks.begin() + (2*l)+1, Block(std::move(range), 10, Ns, 2*(l+1), out.debug, layer));
+            blocks.insert(blocks.begin() + (2*l)+1, Block(std::move(range), 10, Ns, 2*(l+1), out.debug, layer, input));
         }
 
         #pragma omp parallel for schedule(static)
@@ -374,7 +384,7 @@ void stitchPDF::stitch() {
         }
 #else
 
-        int arrsize = (blocks.size() + 1) * RESOLUTION;
+        int arrsize = (blocks.size() + 1) * input.resolution;
         x.resize(arrsize);
         pdf.resize(arrsize);
         cdf.resize(arrsize);
@@ -408,16 +418,16 @@ void stitchPDF::stitch() {
                 }
             }
 
-            step = (end - start)/((double)RESOLUTION + 1.0);
+            step = (end - start)/((double)input.resolution + 1.0);
 
-            for (int j = 0; j < RESOLUTION; j++) {
+            for (int j = 0; j < input.resolution; j++) {
 
                 double xPoint = start + (step * (j + 1));
-                x[(RESOLUTION * i) + j] = xPoint;
+                x[(input.resolution * i) + j] = xPoint;
 
                 // loop unswitching should pull this out to prevent repeated conditional checks
                 if (i == 0 || i == blocks.size()) {
-                    pdf[(RESOLUTION * i) + j] = blocks[min((size_t)i, blocks.size() - 1)].pdfPoint(xPoint);
+                    pdf[(input.resolution * i) + j] = blocks[min((size_t)i, blocks.size() - 1)].pdfPoint(xPoint);
                 } else if (i % 2 == 1) {
                     u1 = (1 - blocks[i - 1].cdfPoint(xPoint)) / 
                         (1 - bottomMidInTop);
@@ -428,7 +438,7 @@ void stitchPDF::stitch() {
                     p1 = blocks[i - 1].pdfPoint(xPoint) * u1;
                     p2 = blocks[i].pdfPoint(xPoint) * u2;
 
-                    pdf[(RESOLUTION * i) + j] = (p1 + p2) / (u1 + u2);
+                    pdf[(input.resolution * i) + j] = (p1 + p2) / (u1 + u2);
                 } else {
                     u1 = ((1 - blocks[i - 1].cdfPoint(xPoint)) - (1 - bottomMidInTop)) / 
                         ((1 - bottomExtremaInTop) - (1 - bottomMidInTop));
@@ -438,7 +448,7 @@ void stitchPDF::stitch() {
                     p1 = blocks[i - 1].pdfPoint(xPoint) * u1;
                     p2 = blocks[i].pdfPoint(xPoint) * u2;
 
-                    pdf[(RESOLUTION * i) + j] = (p1 + p2) / (u1 + u2);
+                    pdf[(input.resolution * i) + j] = (p1 + p2) / (u1 + u2);
                 }
             }
         }

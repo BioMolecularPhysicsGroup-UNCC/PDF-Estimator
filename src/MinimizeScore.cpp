@@ -360,6 +360,7 @@ void MinimizeScore::calculatePDFAdaptive (double cdf[], double lagrange[], int m
         dx[i] = 0;
     }
     
+    /*
     for (int k = 0; k < pdfPoints; k++) { 
         for (int n = 0; n < modes; n++) {
             x[k] += lagrange[n]*T[n][k];
@@ -367,8 +368,8 @@ void MinimizeScore::calculatePDFAdaptive (double cdf[], double lagrange[], int m
         }
         pdf[k] = exp(x[k]);
     }
+    */
 
-    /*
     for (int n = 0; n < modes; n++) {
 
         #pragma omp simd
@@ -381,9 +382,7 @@ void MinimizeScore::calculatePDFAdaptive (double cdf[], double lagrange[], int m
     #pragma omp simd
     for (int k = 0; k < pdfPoints; k++) {
         pdf[k] = exp(x[k]);
-    }  
-    
-    */       
+    }       
     
        
     if (smooth) {

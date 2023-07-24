@@ -4,16 +4,21 @@ using namespace std;
 
 extern "C" { 
     void estimatePDFstitch(double *sampleData, int *sampleLength, int *debug, 
-                           int *outputLength, double *x, double *pdf, double *cdf){  
+                           int *outputLength, double *x, double *pdf, double *cdf,
+                           int *resolution, int* smoothness, int* minLagrange){  
         OutputControl out;
         out.debug = debug[0];
 
         vector <double> samples;
         for (int i = 0; i < sampleLength[0]; i++) {
             samples.push_back(sampleData[i]);
-        }        
+        }
+
+        InputParameters input;
+        input.resolution = *resolution;
+        input.minLagrange = *minLagrange;
         
-        stitchPDF stitch = stitchPDF(samples);        
+        stitchPDF stitch = stitchPDF(samples, input);        
         stitch.out.debug = debug[0];
         stitch.process();
         vector <double> Vx = stitch.getX(outputLength[0]);

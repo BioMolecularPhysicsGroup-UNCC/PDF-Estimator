@@ -1,4 +1,4 @@
-stitchPDF <- function(sample, pdfLength = NULL, debug = 0) {
+stitchPDF <- function(sample, pdfLength = NULL, debug = 0, minLagrange = 5, smoothness = 200, resolution = 50) {
   
   sampleDim = dim(sample)
   if (!is.null(sampleDim)) {
@@ -36,7 +36,10 @@ stitchPDF <- function(sample, pdfLength = NULL, debug = 0) {
 				outputLength = as.integer(outputLength),
 				x = as.double(vector("numeric", outputLength)), 
 				pdf = as.double(vector("numeric", outputLength)),
-				cdf = as.double(vector("numeric", outputLength)))
+				cdf = as.double(vector("numeric", outputLength)),
+        resolution = as.integer(resolution),
+        smoothness = as.integer(smoothness),
+        minLagrange = as.integer(minLagrange))
 	      distribution$sqrSize = inputLength
 	      class(distribution) <- "PDFe"
 	      return(distribution)

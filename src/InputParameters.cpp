@@ -43,6 +43,7 @@ InputParameters::InputParameters() {
     maxLagrange = 200;//2 for power
     minLagrange = 1;
     nLagrangeAdd = 5;
+    resolution = 50;
     outlierCutoff = 7.0;
     smooth = true;
     

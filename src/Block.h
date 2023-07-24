@@ -31,7 +31,7 @@ typedef struct LayerOptions {
 
 class Block {
 public:
-    Block(vector <double> sample, int nPoints, int N, int blockNumber, bool debug, LayerOptions opts);
+    Block(vector <double> sample, int nPoints, int N, int blockNumber, bool debug, LayerOptions opts, InputParameters input);
     virtual ~Block();       
     
     int blockNumber;
@@ -58,6 +58,7 @@ private:
     int sampleLength;
     double normalize;
     LayerOptions layerOpts;
+    InputParameters input;
     vector <double> xAll;
       
     WriteResults write;

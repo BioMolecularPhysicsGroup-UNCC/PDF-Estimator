@@ -55,7 +55,7 @@ public:
     InputData(const InputParameters& input);
 //    InputData(const InputData& orig);
     bool readData();
-    void setData(vector <double> & data);
+    void setData(vector <double> & data, bool isSorted);
     vector<int> realIdx;
     bool processData();
     OutputControl out;   

@@ -62,7 +62,7 @@ bool Block::estimateBlock(double lowerBound, double upperBound) {
     
     out.print("sample size ", (int) sample.size());
     
-    data.setData(sample);     
+    data.setData(sample, true);     
     if (data.processData()) {      
         bool minimized_failed = minimumPDF.minimize(input, data);
         write.createSolution(input, data, minimumPDF);        

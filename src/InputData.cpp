@@ -76,11 +76,11 @@ bool InputData::readData() {
     return processData();
 }
     
-void InputData::setData(vector<double> & data) {       
+void InputData::setData(vector<double> & data, bool isSorted) {       
     rawData.clear();
     rawData.reserve(data.size());
     rawData = data;
-    sort(rawData.begin(), rawData.end());
+    if (!isSorted) sort(rawData.begin(), rawData.end());
     
 }
 

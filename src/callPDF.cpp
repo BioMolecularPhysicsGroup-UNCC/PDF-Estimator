@@ -59,7 +59,7 @@ void callPDF::makeCall(double * sampleData, int sampleLength, double * estimatio
     }
     input.writeHeader = false;
     input.writeFile = false;
-    data.setData(inputData);     
+    data.setData(inputData, false);     
     if (data.processData()) {             
         WriteResults write;       
         write.out.debug = debug;

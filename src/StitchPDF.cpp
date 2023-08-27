@@ -6,6 +6,9 @@
  */
 
 #include "StitchPDF.h"
+#include "OutputControl.h"
+
+#include <chrono>
 
 stitchPDF::stitchPDF(vector<double> sample, InputParameters input) {
     
@@ -15,28 +18,27 @@ stitchPDF::stitchPDF(vector<double> sample, InputParameters input) {
     this->input = input;
 }
 
-void stitchPDF::process() {
-    /*
-    out.print("branch");
-    branch(0, Ns - 1);  
-//    branchNC();
-    out.print("stagger");
-    stagger();
-    out.print("estiimate"); 
-    estimate(); 
-    out.print("stitch");  
-    stitch(); 
-    */
-    size_t block_count = std::max((size_t)1, sample.size()/50000);
-    int block_size = sample.size()/block_count;
+#include <omp.h>
 
-    #pragma omp parallel for schedule(static)
+void stitchPDF::process() {
+
+size_t block_count = std::max((size_t)1, sample.size()/50000);
+int block_size = sample.size()/block_count;
+
+
+
+    std::chrono::steady_clock::time_point begin = std::chrono::steady_clock::now();
+    #pragma omp parallel for schedule(guided)
     for (int b = 0; b < block_count; b++) {
         int start = b*block_size;
         int end = b == block_count - 1 ? sample.size() : (b+1)*block_size;
 
         branch(start, end - 1);
     }
+
+    std::chrono::steady_clock::time_point end = std::chrono::steady_clock::now();
+    out.error(std::to_string(std::chrono::duration_cast<std::chrono::microseconds> (end - begin).count()));
+
 
     // Sort the blocks by their placement 
     std::sort(blocks.begin(), blocks.end(), [](Block lhs, Block rhs) { return lhs.blockNumber < rhs.blockNumber; });
@@ -48,9 +50,20 @@ void stitchPDF::process() {
         blocks[i].blockNumber = 2*i + 1;
     }
 
+
+    begin = std::chrono::steady_clock::now();
     stagger();
+
+    end = std::chrono::steady_clock::now();
+    out.error(std::to_string(std::chrono::duration_cast<std::chrono::microseconds> (end - begin).count()));
+
+    begin = std::chrono::steady_clock::now();
     
     stitch();
+
+    end = std::chrono::steady_clock::now();
+    out.error(std::to_string(std::chrono::duration_cast<std::chrono::microseconds> (end - begin).count()));
+
 }
 
 stitchPDF::stitchPDF(const stitchPDF& orig) {
@@ -125,8 +138,12 @@ void stitchPDF::branch(int left, int right) {
         }
     }
     
+    //#pragma omp task final(sample.size() > 100000) untied
     branch(left, (right+left)/2);
+
     branch((right+left)/2 + 1, right);
+
+    //#pragma omp taskyield
 }
 
 bool stitchPDF::uniformSplit(int left, int right) {    
@@ -138,8 +155,9 @@ bool stitchPDF::uniformSplit(int left, int right) {
     
     vector <double> dx;
     dx.reserve(n - 1);
+
     for (int i = left; i < right; i++) {
-        dx.push_back(sample[i + 1] - sample[i]);
+        dx[i - left] = (sample[i + 1] - sample[i]);
     }  
     
     double ratio = getRatio(dx);
@@ -223,7 +241,7 @@ inline double stitchPDF::getRatio(const vector <double> &sample) {
 }
 
 
-void stitchPDF::stagger() {
+inline void stitchPDF::stagger() {
     if (blocks.size() > 1) {
         for (int l = 0; l < partitions.size() - 2; l++) {
             int left = ((partitions[l] + partitions[l + 1])/2) - BUFFER;
@@ -235,7 +253,7 @@ void stitchPDF::stagger() {
             blocks.insert(blocks.begin() + (2*l)+1, Block(std::move(range), 10, Ns, 2*(l+1), out.debug, layer, input));
         }
 
-        #pragma omp parallel for schedule(static)
+        #pragma omp for schedule(static)
         for (int l = 0; l < partitions.size() - 2; l++) {
             // just recompute for now
             int left = ((partitions[l] + partitions[l + 1])/2) - BUFFER;
@@ -252,13 +270,7 @@ void stitchPDF::stagger() {
     }
 }
 
-void stitchPDF::stitch() {  
-
-    //sort(x.begin(), x.end());
-    
-    double power = 2;
-    
-    double u1, u2, p1, p2, jMid, endMid, jMidInK, jMaxInK, jMinInK, jMinCdf;
+inline void stitchPDF::stitch() {  
 
     int j = 0; // bottom block
     int k = 1; // top block
@@ -389,17 +401,20 @@ void stitchPDF::stitch() {
         pdf.resize(arrsize);
         cdf.resize(arrsize);
 
-        double start, end, step,
-                bottomExtremaInTop, bottomMidInTop, bottomMidCdf;
-
-        #pragma omp parallel for schedule(static)
+        #pragma omp for schedule(static)
         for (int i = 0; i <= blocks.size(); i++) {
             int last;
+
+            double u1, u2, p1, p2, jMid, endMid, jMidInK, jMaxInK, jMinInK, jMinCdf;
+
+            double start, end, step,
+                bottomExtremaInTop, bottomMidInTop, bottomMidCdf;
 
             if (i == blocks.size()) {
                 start = (blocks[i - 1].xMin + blocks[i - 1].xMax) / 2;
                 end = blocks[i - 1].xMax;
             } else {
+                // our bottom block is to the right of the top block
                 if (i % 2 == 0) {
                     start = blocks[i].xMin;
                     end = (blocks[i].xMin + blocks[i].xMax) / 2;
@@ -407,7 +422,9 @@ void stitchPDF::stitch() {
                     if (i > 0) {
                         bottomMidInTop = blocks[i - 1].cdfPoint(end);
                         bottomExtremaInTop = blocks[i - 1].cdfPoint(start);
+                        bottomMidCdf = blocks[i].cdfPoint(end);
                     }
+                // the bottom block is to the left of the top block
                 } else {
                     start = (blocks[i - 1].xMin + blocks[i - 1].xMax) / 2;
                     end = blocks[i - 1].xMax;

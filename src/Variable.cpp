@@ -29,7 +29,7 @@ void Variable::calculateMarginals(vector <double> gridPointsCourse, vector <doub
     
     InputData data = InputData(input);
     data.out.debug = input.debug;    
-    data.setData(sample);
+    data.setData(sample, false);
     data.processData();
     
     MinimizeScore minimumPDF = MinimizeScore();
@@ -82,7 +82,7 @@ vector <double> Variable::calculatePDF(vector <int> index) {
     
     InputData data = InputData(input);
     data.out.debug = input.debug;    
-    data.setData(subsample);
+    data.setData(subsample, false);
     data.processData();
     
     MinimizeScore minimumPDF = MinimizeScore();

@@ -26,9 +26,10 @@ size_t block_count = std::max((size_t)1, sample.size()/50000);
 int block_size = sample.size()/block_count;
 
 
+#pragma omp parallel 
+{
 
-    std::chrono::steady_clock::time_point begin = std::chrono::steady_clock::now();
-    #pragma omp parallel for schedule(guided)
+    #pragma omp for
     for (int b = 0; b < block_count; b++) {
         int start = b*block_size;
         int end = b == block_count - 1 ? sample.size() : (b+1)*block_size;
@@ -36,34 +37,136 @@ int block_size = sample.size()/block_count;
         branch(start, end - 1);
     }
 
-    std::chrono::steady_clock::time_point end = std::chrono::steady_clock::now();
-    out.error(std::to_string(std::chrono::duration_cast<std::chrono::microseconds> (end - begin).count()));
-
 
     // Sort the blocks by their placement 
-    std::sort(blocks.begin(), blocks.end(), [](Block lhs, Block rhs) { return lhs.blockNumber < rhs.blockNumber; });
-    std::sort(partitions.begin(), partitions.end());
-    partitions.push_back(sample.size());
+    #pragma omp single
+    {
+        #pragma omp task
+        std::sort(blocks.begin(), blocks.end(), [](Block lhs, Block rhs) { return lhs.blockNumber < rhs.blockNumber; });
 
-    // Layer one blocks are numbered 2k + 1
-    for (int i = 0; i < blocks.size(); i++) {
-        blocks[i].blockNumber = 2*i + 1;
+        #pragma omp task
+        std::sort(partitions.begin(), partitions.end());
+
+        partitions.push_back(sample.size());
+
+        // Layer one blocks are numbered 2k + 1
+        for (int i = 0; i < blocks.size(); i++) {
+            blocks[i].blockNumber = 2*i + 1;
+        }
+
+        #pragma omp taskwait
+
+        for (int l = 0; l < partitions.size() - 2; l++) {
+            int left = ((partitions[l] + partitions[l + 1])/2) - BUFFER;
+            int right = ((partitions[l + 1] + partitions[l + 2])/2) + BUFFER;
+
+            vector<double> range(sample.begin() + left, sample.begin() + right); 
+            LayerOptions layer = { false, false, false };
+
+            blocks.insert(blocks.begin() + (2*l)+1, Block(std::move(range), 10, Ns, 2*(l+1), out.debug, layer, input));
+        }
     }
 
-
-    begin = std::chrono::steady_clock::now();
-    stagger();
-
-    end = std::chrono::steady_clock::now();
-    out.error(std::to_string(std::chrono::duration_cast<std::chrono::microseconds> (end - begin).count()));
-
-    begin = std::chrono::steady_clock::now();
     
-    stitch();
+    #pragma omp for schedule(dynamic,1)
+    for (int l = 0; l < partitions.size() - 2; l++) {
+        // just recompute for now
+        int left = ((partitions[l] + partitions[l + 1])/2) - BUFFER;
+        int right = ((partitions[l + 1] + partitions[l + 2])/2) + BUFFER;
 
-    end = std::chrono::steady_clock::now();
-    out.error(std::to_string(std::chrono::duration_cast<std::chrono::microseconds> (end - begin).count()));
+        double leftBoundary = (sample[left] + sample[left - 1])/2;
+        double rightBoundary = (sample[right] + sample[right + 1])/2;
 
+        blocks[(2*l)+1].estimateBlock(leftBoundary, rightBoundary);
+    }
+
+    #pragma omp single
+    {
+        int arrsize = (blocks.size() + 1) * input.resolution;
+        x.resize(arrsize);
+        pdf.resize(arrsize);
+        cdf.resize(arrsize);
+    }
+
+    #pragma omp for schedule(static)
+    for (int i = 0; i <= blocks.size(); i++) {
+        int last;
+
+        double u1, u2, p1, p2, jMid, endMid, jMidInK, jMaxInK, jMinInK, jMinCdf;
+
+        double start, end, step,
+            bottomExtremaInTop, bottomMidInTop, bottomMidCdf;
+
+        if (i == blocks.size()) {
+            start = (blocks[i - 1].xMin + blocks[i - 1].xMax) / 2;
+            end = blocks[i - 1].xMax;
+        } else {
+            // our bottom block is to the right of the top block
+            if (i % 2 == 0) {
+                start = blocks[i].xMin;
+                end = (blocks[i].xMin + blocks[i].xMax) / 2;
+                
+                if (i > 0) {
+                    bottomMidInTop = blocks[i - 1].cdfPoint(end);
+                    bottomExtremaInTop = blocks[i - 1].cdfPoint(start);
+                    bottomMidCdf = blocks[i].cdfPoint(end);
+                }
+            // the bottom block is to the left of the top block
+            } else {
+                start = (blocks[i - 1].xMin + blocks[i - 1].xMax) / 2;
+                end = blocks[i - 1].xMax;
+
+                bottomMidInTop = blocks[i].cdfPoint(start);
+                bottomExtremaInTop = blocks[i].cdfPoint(end);
+                bottomMidCdf = blocks[i - 1].cdfPoint(start);
+            }
+        }
+
+        step = (end - start)/((double)input.resolution + 1.0);
+
+        for (int j = 0; j < input.resolution; j++) {
+
+            double xPoint = start + (step * (j + 1));
+            x[(input.resolution * i) + j] = xPoint;
+
+            // loop unswitching should pull this out to prevent repeated conditional checks
+            if (i == 0 || i == blocks.size()) {
+                pdf[(input.resolution * i) + j] = blocks[min((size_t)i, blocks.size() - 1)].pdfPoint(xPoint);
+            } else if (i % 2 == 1) {
+                u1 = (1 - blocks[i - 1].cdfPoint(xPoint)) / 
+                    (1 - bottomMidInTop);
+
+                u2 = (blocks[i].cdfPoint(xPoint) - bottomMidInTop) /
+                    (bottomExtremaInTop - bottomMidInTop);
+
+                p1 = blocks[i - 1].pdfPoint(xPoint) * u1;
+                p2 = blocks[i].pdfPoint(xPoint) * u2;
+
+                pdf[(input.resolution * i) + j] = (p1 + p2) / (u1 + u2);
+            } else {
+                u1 = ((1 - blocks[i - 1].cdfPoint(xPoint)) - (1 - bottomMidInTop)) / 
+                    ((1 - bottomExtremaInTop) - (1 - bottomMidInTop));
+
+                u2 = blocks[i].cdfPoint(xPoint) / bottomMidCdf;
+
+                p1 = blocks[i - 1].pdfPoint(xPoint) * u1;
+                p2 = blocks[i].pdfPoint(xPoint) * u2;
+
+                pdf[(input.resolution * i) + j] = (p1 + p2) / (u1 + u2);
+            }
+        }
+    }
+
+    #pragma omp single
+    {
+        cdf[0] = 0.0;
+
+        for (int i = 1; i < pdf.size(); i++) {
+            cdf[i] = cdf[i - 1] + ((0.5 * (pdf[i] + pdf[i - 1])) * (x[i] - x[i - 1]));
+        }
+    }
+
+}
 }
 
 stitchPDF::stitchPDF(const stitchPDF& orig) {

@@ -7,6 +7,8 @@
 
 #include "callPDF.h"
 
+#ifdef outputR
+
 callPDF::callPDF() {
 }
 
@@ -81,3 +83,4 @@ void callPDF::makeCall(double * sampleData, int sampleLength, double * estimatio
     
 }
 
+#endif

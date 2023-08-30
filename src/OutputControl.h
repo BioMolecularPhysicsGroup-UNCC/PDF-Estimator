@@ -15,10 +15,9 @@
 #ifndef OUTPUTCONTROL_H
 #define	OUTPUTCONTROL_H
 
-//#define outputCommandLine
+//define outputCommandLine
 //#define outputMatlab
 #define outputR
-
 
 #include <string>
 

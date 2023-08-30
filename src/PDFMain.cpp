@@ -2,6 +2,8 @@
 #include <vector>
 #include "callPDF.h"
 
+#ifdef outputR
+
 extern "C" { 
     void estimatePDF(double *sampleData, int *sampleLength, double *estimationPoints, double *estimationPDF, int *estimationLength, int *isSpecifyPoints,
                      double *low, double *high, int *isLow, int *isHigh, double * target,
@@ -49,3 +51,5 @@ extern "C" {
         return;    
     }   
 } 
+
+#endif

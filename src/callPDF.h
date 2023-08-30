@@ -5,6 +5,10 @@
  * Created on September 18, 2018, 1:20 PM
  */
 
+
+
+#ifdef outputR
+
 #include "R.h"
 #include "Rmath.h"
 #include <vector>
@@ -13,7 +17,7 @@
 #include "ScoreQZ.h"
 #include "MinimizeScore.h"
 #include "WriteResults.h"
-
+#include "OutputControl.h"
 
 #ifndef CALLPDF_HPP
 #define	CALLPDF_HPP
@@ -44,4 +48,4 @@ private:
 };
 
 #endif	/* CALLPDF_HPP */
-
+#endif
